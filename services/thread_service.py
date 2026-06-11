@@ -97,7 +97,7 @@ class ThreadService:
             for row in rows
         ]
 
-        CacheService.set(cache_key, json.dumps(threads), ex=3600)
+        CacheService.set(cache_key, json.dumps(threads, default=str), ex=3600)
         return threads
 
     @staticmethod
@@ -152,7 +152,7 @@ class ThreadService:
 
         result = {"messages": messages}
 
-        CacheService.set(cache_key, json.dumps(result), 3600)
+        CacheService.set(cache_key, json.dumps(result, default=str), 3600)
         return result
 
     @staticmethod
@@ -185,7 +185,7 @@ class ThreadService:
 
         result = {"messages": messages}
 
-        CacheService.set(cache_key, json.dumps(result), 3600)
+        CacheService.set(cache_key, json.dumps(result, default=str), 3600)
         return result
 
     @staticmethod
