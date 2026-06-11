@@ -24,9 +24,8 @@ st.set_page_config(page_title="AI Email Assistant", page_icon="📧")
 
 # Import the tools and agent components from your existing files
 from langgraph.prebuilt import ToolNode, tools_condition
-from langgraph.graph import StateGraph, MessagesState, START, END
-from lib.utils import SYSTEM_PROMPT
-from lib.utils import parse_json
+from langgraph.graph import StateGraph, MessagesState, START
+from lib.prompts import SYSTEM_PROMPT
 
 from tools.semantic_search_tool import semantic_search_tool
 from tools.metadata_filtering_tool import email_filtering_tool
