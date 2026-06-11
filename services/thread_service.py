@@ -69,10 +69,10 @@ class ThreadService:
 
     @staticmethod
     def get_threads(user_id):
-        cache_key = f"threads:{user_id}"
-        cached_value = CacheService.get(cache_key)
-        if cached_value:
-            return json.loads(cached_value)
+        # cache_key = f"threads:{user_id}"
+        # cached_value = CacheService.get(cache_key)
+        # if cached_value:
+        #     return json.loads(cached_value)
 
         with pool.connection() as conn:
             with conn.cursor() as curr:
@@ -97,7 +97,7 @@ class ThreadService:
             for row in rows
         ]
 
-        CacheService.set(cache_key, json.dumps(threads, default=str), ex=3600)
+        # CacheService.set(cache_key, json.dumps(threads, default=str), ex=3600)
         return threads
 
     @staticmethod
@@ -123,10 +123,10 @@ class ThreadService:
     @staticmethod
     def get_thread_messages(thread_id):
 
-        cache_key = f"thread:{thread_id}:messages"
-        cached_value = CacheService.get(cache_key)
-        if cached_value:
-            return json.loads(cached_value)
+        # cache_key = f"thread:{thread_id}:messages"
+        # cached_value = CacheService.get(cache_key)
+        # if cached_value:
+        #     return json.loads(cached_value)
 
         with pool.connection() as conn:
             with conn.cursor() as curr:
@@ -152,16 +152,16 @@ class ThreadService:
 
         result = {"messages": messages}
 
-        CacheService.set(cache_key, json.dumps(result, default=str), 3600)
+        # CacheService.set(cache_key, json.dumps(result, default=str), 3600)
         return result
 
     @staticmethod
     def get_recent_thread_messages(thread_id):
 
-        cache_key = f"thread:{thread_id}:recent_messages"
-        cached_value = CacheService.get(cache_key)
-        if cached_value:
-            return json.loads(cached_value)
+        # cache_key = f"thread:{thread_id}:recent_messages"
+        # cached_value = CacheService.get(cache_key)
+        # if cached_value:
+        #     return json.loads(cached_value)
 
         with pool.connection() as conn:
             with conn.cursor() as curr:
@@ -185,7 +185,7 @@ class ThreadService:
 
         result = {"messages": messages}
 
-        CacheService.set(cache_key, json.dumps(result, default=str), 3600)
+        # CacheService.set(cache_key, json.dumps(result, default=str), 3600)
         return result
 
     @staticmethod

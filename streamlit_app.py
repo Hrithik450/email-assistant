@@ -150,7 +150,8 @@ for thread in all_threads:
             st.rerun()
     with col2:
         # Display the formatted date next to the button
-        st.caption(thread["created_at"].strftime("%b %d"))
+        created_at = datetime.fromisoformat(thread["created_at"])
+        st.caption(created_at.strftime("%b %d"))
 
 # -------------------- STREAMLIT UI --------------------
 # st.set_page_config(page_title="AI Email Assistant", page_icon="📧")
