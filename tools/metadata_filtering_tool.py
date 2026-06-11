@@ -8,7 +8,12 @@ from langchain.tools import tool
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
-from lib.utils import normalize_list, match_value_in_columns, smart_subject_match, build_date_range
+from lib.utils import (
+    normalize_list,
+    match_value_in_columns,
+    smart_subject_match,
+    build_date_range,
+)
 
 template = """
 You are an expert email summarizer.  
@@ -23,28 +28,30 @@ Summarize this,
 """
 prompt_perspective = ChatPromptTemplate.from_template(template)
 
-llm = ChatOpenAI(
-    model='gpt-4o-mini',
-    temperature=0,
-    max_completion_tokens=512
-)
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_completion_tokens=512)
 
 encoding_model = tiktoken.get_encoding("cl100k_base")
+
+
 def get_chunks(text: str, chunk_size: int = 10000) -> List[str]:
     """Split a large text into token-based chunks."""
     tokens = encoding_model.encode(text)
 
     chunks = []
     for i in range(0, len(tokens), chunk_size):
-        chunk_tokens = tokens[i:i+chunk_size]
+        chunk_tokens = tokens[i : i + chunk_size]
         chunk_text = encoding_model.decode(chunk_tokens)
         chunks.append(chunk_text)
     return chunks
 
+
 def count_tokens(text: str) -> int:
     return len(encoding_model.enc(text))
 
-def run_batch_task(tasks: List[Tuple[int, List[HumanMessage], int]], tpm_limit: int = 29000) -> List[Tuple[int, str]]:
+
+def run_batch_task(
+    tasks: List[Tuple[int, List[HumanMessage], int]], tpm_limit: int = 29000
+) -> List[Tuple[int, str]]:
     """
     tasks: list of (task_id, messages, est_tokens)
     tpm_limit: max tokens/minute allowed
@@ -85,6 +92,7 @@ def run_batch_task(tasks: List[Tuple[int, List[HumanMessage], int]], tpm_limit: 
 
     return results
 
+
 def human_readable_date(timestamp) -> str:
     """
     Convert a timestamp to human-readable form.
@@ -92,7 +100,7 @@ def human_readable_date(timestamp) -> str:
     """
     if timestamp is None:
         return "N/A"
-    
+
     # If Polars datetime, convert to Python datetime
     if not isinstance(timestamp, datetime):
         try:
@@ -100,8 +108,9 @@ def human_readable_date(timestamp) -> str:
             timestamp = datetime.fromisoformat(str(timestamp))
         except Exception:
             return "N/A"
-    
+
     return timestamp.strftime("%a, %b %d, %Y %I:%M %p")
+
 
 @tool("email_filtering_tool", parse_docstring=True)
 def email_filtering_tool(
@@ -122,7 +131,7 @@ def email_filtering_tool(
 ) -> str:
     """
     This tool filter emails based on metadata such as sender (human), recipient (human), date range, or thread ID.
-    
+
     Args:
         uid (str, optional): Filter emails by their unique UID. Exact match required.
         threadId: Filter emails by their conversation (email chian) thread ID, Returns all messages belonging to that specific chain (thread).
@@ -140,14 +149,18 @@ def email_filtering_tool(
         limit (int, optional): Maximum number of results to return. set default value to 5.
     """
 
-    print(f"email_filtering_tool is being called {uid}, {threadId}, {sender}, {recipient}, {subject}, {cc}, {labels}, {start_date}, {end_date}, {body}, {html}, {sort_by}, {sort_order}, {limit}")
+    print(
+        f"email_filtering_tool is being called {uid}, {threadId}, {sender}, {recipient}, {subject}, {cc}, {labels}, {start_date}, {end_date}, {body}, {html}, {sort_by}, {sort_order}, {limit}"
+    )
     temp_df = df.clone()
     mask = pl.lit(True)
 
-    temp_df = temp_df.with_columns([
-        temp_df["body"].struct.field("text").alias("body_text"),
-        temp_df["body"].struct.field("html").alias("body_html"),
-    ])
+    temp_df = temp_df.with_columns(
+        [
+            temp_df["body"].struct.field("text").alias("body_text"),
+            temp_df["body"].struct.field("html").alias("body_html"),
+        ]
+    )
 
     if uid:
         mask = mask & (pl.col("id") == uid)
@@ -159,74 +172,99 @@ def email_filtering_tool(
     if sender:
         sender = sender.lower()
         # Add a normalized column
-        temp_df = temp_df.with_columns([
-            pl.col("from").map_elements(normalize_list, return_dtype=str).alias("from_normalized")
-        ])
+        temp_df = temp_df.with_columns(
+            [
+                pl.col("from")
+                .map_elements(normalize_list, return_dtype=str)
+                .alias("from_normalized")
+            ]
+        )
         # Filter rows where the normalized 'from' matches sender
-        sender_mask = pl.col("from_normalized").map_elements(lambda x: match_value_in_columns(sender, x), return_dtype=bool)
+        sender_mask = pl.col("from_normalized").map_elements(
+            lambda x: match_value_in_columns(sender, x), return_dtype=bool
+        )
         mask = mask & sender_mask
 
     # --- Recipient filter ---
     if recipient:
         recipient = recipient.lower()
         # Normalize 'to' and 'cc' columns which are lists
-        temp_df = temp_df.with_columns([
-            pl.col("to").map_elements(normalize_list, return_dtype=str).alias("to_normalized")
-        ])
+        temp_df = temp_df.with_columns(
+            [
+                pl.col("to")
+                .map_elements(normalize_list, return_dtype=str)
+                .alias("to_normalized")
+            ]
+        )
         # Filter rows where any normalized 'to' or 'cc' matches the recipient
-        recipient_mask = (
-            pl.col("to_normalized").map_elements(lambda x: match_value_in_columns(recipient, x), return_dtype=bool)
+        recipient_mask = pl.col("to_normalized").map_elements(
+            lambda x: match_value_in_columns(recipient, x), return_dtype=bool
         )
         if cc:
             # Normalize 'to' and 'cc' columns which are lists
-            temp_df = temp_df.with_columns([
-                pl.col("cc").map_elements(normalize_list, return_dtype=str).alias("cc_normalized")
-            ])
+            temp_df = temp_df.with_columns(
+                [
+                    pl.col("cc")
+                    .map_elements(normalize_list, return_dtype=str)
+                    .alias("cc_normalized")
+                ]
+            )
             # Filter rows where any normalized 'to' or 'cc' matches the recipient
-            cc_mask = (
-                pl.col("cc_normalized").map_elements(lambda x: match_value_in_columns(recipient, x), return_dtype=bool)
+            cc_mask = pl.col("cc_normalized").map_elements(
+                lambda x: match_value_in_columns(recipient, x), return_dtype=bool
             )
             recipient_mask = recipient_mask | cc_mask
 
         mask = mask & recipient_mask
 
     # --- Date filtering (normalize to datetime) ---
-    dt1 = pl.col("date").str.to_datetime("%Y-%m-%dT%H:%M:%S", strict=False).dt.replace_time_zone("UTC")
-    dt2 = pl.col("date").str.to_datetime("%Y-%m-%dT%H:%M:%S%z", strict=False).dt.convert_time_zone("UTC")
-    temp_df = temp_df.with_columns(
-        pl.coalesce([dt1, dt2]).alias("date_dt")
+    dt1 = (
+        pl.col("date")
+        .str.to_datetime("%Y-%m-%dT%H:%M:%S", strict=False)
+        .dt.replace_time_zone("UTC")
     )
+    dt2 = (
+        pl.col("date")
+        .str.to_datetime("%Y-%m-%dT%H:%M:%S%z", strict=False)
+        .dt.convert_time_zone("UTC")
+    )
+    temp_df = temp_df.with_columns(pl.coalesce([dt1, dt2]).alias("date_dt"))
 
     range_start, range_end = build_date_range(start_date, end_date)
     if range_start and range_end:
-        mask = mask & (pl.col("date_dt") >= range_start) & (pl.col("date_dt") <= range_end)
+        mask = (
+            mask & (pl.col("date_dt") >= range_start) & (pl.col("date_dt") <= range_end)
+        )
 
-    if labels: 
+    if labels:
         labels = [lbl.strip().lower() for lbl in labels]
 
-        temp_df = temp_df.with_columns([
-            pl.col("labels").map_elements(normalize_list, return_dtype=str).alias("labels_normalized")
-        ])
+        temp_df = temp_df.with_columns(
+            [
+                pl.col("labels")
+                .map_elements(normalize_list, return_dtype=str)
+                .alias("labels_normalized")
+            ]
+        )
 
         labels_mask = pl.col("labels_normalized").map_elements(
             lambda email_lables: any(lbl in email_lables for lbl in labels),
-            return_dtype=bool
+            return_dtype=bool,
         )
 
         mask = mask & labels_mask
 
-    if subject:    
-        subject_mask = pl.col("subject").map_elements(lambda x: smart_subject_match(subject, x), return_dtype=bool)
+    if subject:
+        subject_mask = pl.col("subject").map_elements(
+            lambda x: smart_subject_match(subject, x), return_dtype=bool
+        )
         mask = mask & subject_mask
 
     # Apply the mask only once
     temp_df = temp_df.filter(mask)
 
     # --- Sorting ---
-    temp_df = temp_df.sort(
-        by=sort_by,
-        descending=(sort_order.lower() == "desc")
-    )
+    temp_df = temp_df.sort(by=sort_by, descending=(sort_order.lower() == "desc"))
 
     # --- Handle empty result ---
     if temp_df.is_empty():
@@ -234,7 +272,18 @@ def email_filtering_tool(
 
     # --- Preview results ---
     total_matches = temp_df.height
-    preview_cols = ["id", "threadId", "from", "to", "subject", "date_dt", "cc", "snippet", "labels", "attachments"]
+    preview_cols = [
+        "id",
+        "threadId",
+        "from",
+        "to",
+        "subject",
+        "date_dt",
+        "cc",
+        "snippet",
+        "labels",
+        "attachments",
+    ]
     if body:
         preview_cols.append("body_text")
     if html:
@@ -263,7 +312,7 @@ def email_filtering_tool(
         if html:
             parts.append(f"HTML: {res.get('body_html','N/A')}")
         return "\n".join(parts)
-    
+
     formatted_results = "\n\n---\n\n".join(fmt(r) for r in results_preview)
     shown = total_matches if limit is None else min(int(limit), total_matches)
     return f"Found {total_matches} emails matching the criteria. Showing {shown}:\n\n{formatted_results}"

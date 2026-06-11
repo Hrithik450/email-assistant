@@ -1,4 +1,5 @@
 import sys
+
 # import pysqlite3
 # sys.modules["sqlite3"] = pysqlite3
 import os
@@ -18,6 +19,7 @@ IS_STREAMLIT_ENVIRONMENT = "streamlit" in sys.modules
 if IS_STREAMLIT_ENVIRONMENT:
     import streamlit as st
 
+
 # --- Universal load_resources function ---
 def _load_resources_base():
     """
@@ -31,9 +33,15 @@ def _load_resources_base():
         print("Streamlit environment detected. Will download data from Google Drive.")
         output_path_mails = "clean_mails.jsonl"
         if not os.path.exists(output_path_mails):
-            with st.spinner("Downloading metadata from Google Drive (first-time setup)..."):
-                gdown.download(id=st.secrets["EMAIL_JSONL_GDRIVE_ID"], output=output_path_mails, quiet=False)
-        
+            with st.spinner(
+                "Downloading metadata from Google Drive (first-time setup)..."
+            ):
+                gdown.download(
+                    id=st.secrets["EMAIL_JSONL_GDRIVE_ID"],
+                    output=output_path_mails,
+                    quiet=False,
+                )
+
         data_path = output_path_mails
     else:
         # --- COMMAND-LINE PATH: Use local file ---
@@ -41,8 +49,10 @@ def _load_resources_base():
         data_path = EMAIL_JSON_PATH
         if not os.path.exists(data_path):
             # Provide a clear error if the local file is missing.
-            raise FileNotFoundError(f"Local data file not found at '{data_path}'. Please ensure it exists before running chatbot.py.")
-        
+            raise FileNotFoundError(
+                f"Local data file not found at '{data_path}'. Please ensure it exists before running chatbot.py."
+            )
+
     # --- 2. Shared Polars Loading Logic ---
     # This part is now the same for both environments, it just uses the determined data_path.
     print(f"Loading email metadata from: {data_path}")
@@ -57,32 +67,37 @@ def _load_resources_base():
             client = chromadb.CloudClient(
                 api_key=st.secrets["CHROMA_API_KEY"],
                 tenant=st.secrets["CHROMA_TENANT"],
-                database=st.secrets["CHROMA_DATABASE"]
+                database=st.secrets["CHROMA_DATABASE"],
             )
         else:
             client = chromadb.CloudClient(
                 api_key=os.getenv("CHROMA_API_KEY"),
                 tenant=os.getenv("CHROMA_TENANT"),
-                database=os.getenv("CHROMA_DATABASE")
+                database=os.getenv("CHROMA_DATABASE"),
             )
         collection = client.get_collection(name=CHROMA_COLLECTION_NAME)
         print("Successfully connected to ChromaDB collection.")
     except Exception as e:
         print(f"FATAL ERROR: Could not connect to ChromaDB. {e}")
         collection = None
-    
+
     return df, collection
+
 
 # --- Environment-Specific Function Wrapper ---
 if IS_STREAMLIT_ENVIRONMENT:
+
     @st.cache_resource
     def load_resources():
         return _load_resources_base()
+
 else:
     load_dotenv()
+
     @lru_cache(maxsize=None)
     def load_resources():
         return _load_resources_base()
+
 
 # --- Global variables that your tools will import ---
 df, chroma_collection = load_resources()
