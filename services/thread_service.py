@@ -4,6 +4,7 @@ from services.cache_service import CacheService
 
 
 class ThreadService:
+
     @staticmethod
     def create_new_thread(user_id, title):
         with pool.connection() as conn:

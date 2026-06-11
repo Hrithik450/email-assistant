@@ -4,13 +4,14 @@ import polars as pl
 from datetime import datetime, timedelta, timezone
 
 # Import the full email DataFrame
-from lib.load_data import df
+from lib.pipeline import df
 
 # Import helper functions
 from lib.utils import normalize_list, match_value_in_columns, smart_subject_match
 
 # Initialize the VADER analyzer once
 analyzer = SentimentIntensityAnalyzer()
+
 
 def parse_datetime_utc(date_str: str) -> datetime:
     """
@@ -23,6 +24,7 @@ def parse_datetime_utc(date_str: str) -> datetime:
         dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
     return dt.replace(tzinfo=timezone.utc)
 
+
 def human_readable_date(timestamp) -> str:
     """
     Convert a timestamp to human-readable form.
@@ -30,14 +32,15 @@ def human_readable_date(timestamp) -> str:
     """
     if timestamp is None:
         return "N/A"
-    
+
     if not isinstance(timestamp, datetime):
         try:
             timestamp = datetime.fromisoformat(str(timestamp))
         except Exception:
             return "N/A"
-    
+
     return timestamp.strftime("%a, %b %d, %Y %I:%M %p")
+
 
 def classify_sentiment(score):
     """Classifies a VADER compound score into a category."""
@@ -48,6 +51,7 @@ def classify_sentiment(score):
     else:
         return "Neutral"
 
+
 @tool("sentiment_analysis_tool", parse_docstring=True)
 def sentiment_analysis_tool(
     threadId: str = None,
@@ -56,7 +60,7 @@ def sentiment_analysis_tool(
     subject: str = None,
     start_date: str = None,
     end_date: str = None,
-    timeline_granularity: str = None
+    timeline_granularity: str = None,
 ) -> str:
     """
     Analyzes the sentiment of emails. It can analyze a complete conversation thread or filter emails by metadata.
@@ -73,46 +77,66 @@ def sentiment_analysis_tool(
         end_date (str, optional): The end date for the analysis (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS).
         timeline_granularity (str, optional): If provided, groups sentiment by 'month' or 'year'.
     """
-    print(f"sentiment_analysis_tool called with: threadId={threadId}, sender={sender}, recipient={recipient}, subject={subject}, timeline={timeline_granularity}")
-    
+    print(
+        f"sentiment_analysis_tool called with: threadId={threadId}, sender={sender}, recipient={recipient}, subject={subject}, timeline={timeline_granularity}"
+    )
+
     if df.is_empty():
         return "Error: Email data is not loaded."
 
     temp_df = df.clone()
-    
+
     if not threadId and sender and recipient and subject:
         print("Attempting to find conversation threadId...")
         sender_lower = sender.lower()
         recipient_lower = recipient.lower()
-        
+
         temp_df = temp_df.with_columns(
-            pl.col("from").map_elements(normalize_list, return_dtype=str).alias("from_normalized"),
-            pl.col("to").map_elements(normalize_list, return_dtype=str).alias("to_normalized"),
-            pl.col("cc").map_elements(normalize_list, return_dtype=str).alias("cc_normalized")
+            pl.col("from")
+            .map_elements(normalize_list, return_dtype=str)
+            .alias("from_normalized"),
+            pl.col("to")
+            .map_elements(normalize_list, return_dtype=str)
+            .alias("to_normalized"),
+            pl.col("cc")
+            .map_elements(normalize_list, return_dtype=str)
+            .alias("cc_normalized"),
         )
-        
-        a_to_b = (
-            pl.col("from_normalized").map_elements(lambda x: match_value_in_columns(sender_lower, x), return_dtype=bool) &
-            (pl.col("to_normalized").map_elements(lambda x: match_value_in_columns(recipient_lower, x), return_dtype=bool) |
-             pl.col("cc_normalized").map_elements(lambda x: match_value_in_columns(recipient_lower, x), return_dtype=bool))
+
+        a_to_b = pl.col("from_normalized").map_elements(
+            lambda x: match_value_in_columns(sender_lower, x), return_dtype=bool
+        ) & (
+            pl.col("to_normalized").map_elements(
+                lambda x: match_value_in_columns(recipient_lower, x), return_dtype=bool
+            )
+            | pl.col("cc_normalized").map_elements(
+                lambda x: match_value_in_columns(recipient_lower, x), return_dtype=bool
+            )
         )
-        b_to_a = (
-            pl.col("from_normalized").map_elements(lambda x: match_value_in_columns(recipient_lower, x), return_dtype=bool) &
-            (pl.col("to_normalized").map_elements(lambda x: match_value_in_columns(sender_lower, x), return_dtype=bool) |
-             pl.col("cc_normalized").map_elements(lambda x: match_value_in_columns(sender_lower, x), return_dtype=bool))
+        b_to_a = pl.col("from_normalized").map_elements(
+            lambda x: match_value_in_columns(recipient_lower, x), return_dtype=bool
+        ) & (
+            pl.col("to_normalized").map_elements(
+                lambda x: match_value_in_columns(sender_lower, x), return_dtype=bool
+            )
+            | pl.col("cc_normalized").map_elements(
+                lambda x: match_value_in_columns(sender_lower, x), return_dtype=bool
+            )
         )
-        
-        subject_mask = pl.col("subject").map_elements(lambda x: smart_subject_match(subject, x), return_dtype=bool)
+
+        subject_mask = pl.col("subject").map_elements(
+            lambda x: smart_subject_match(subject, x), return_dtype=bool
+        )
         conversation_mask = (a_to_b | b_to_a) & subject_mask
         matching_emails = temp_df.filter(conversation_mask)
-        
+
         if matching_emails.is_empty():
             return "No conversation thread found matching the specified sender, recipient, and subject."
-        
+
         resolved_threadId = matching_emails.row(0, named=True).get("threadId")
         if not resolved_threadId:
             return "Could not identify a unique threadId for the conversation."
-            
+
         print(f"Found threadId: {resolved_threadId}. Proceeding with analysis...")
         threadId = resolved_threadId
 
@@ -126,27 +150,38 @@ def sentiment_analysis_tool(
         if sender:
             sender = sender.lower()
             analysis_df = analysis_df.with_columns(
-                pl.col("from").map_elements(normalize_list, return_dtype=str).alias("from_normalized")
+                pl.col("from")
+                .map_elements(normalize_list, return_dtype=str)
+                .alias("from_normalized")
             )
-            sender_mask = pl.col("from_normalized").map_elements(lambda x: match_value_in_columns(sender, x), return_dtype=bool)
+            sender_mask = pl.col("from_normalized").map_elements(
+                lambda x: match_value_in_columns(sender, x), return_dtype=bool
+            )
             mask = mask & sender_mask
 
         # --- Recipient filter (includes 'to' and 'cc') ---
         if recipient:
             recipient = recipient.lower()
             analysis_df = analysis_df.with_columns(
-                pl.col("to").map_elements(normalize_list, return_dtype=str).alias("to_normalized"),
-                pl.col("cc").map_elements(normalize_list, return_dtype=str).alias("cc_normalized")
+                pl.col("to")
+                .map_elements(normalize_list, return_dtype=str)
+                .alias("to_normalized"),
+                pl.col("cc")
+                .map_elements(normalize_list, return_dtype=str)
+                .alias("cc_normalized"),
             )
-            recipient_mask = (
-                pl.col("to_normalized").map_elements(lambda x: match_value_in_columns(recipient, x), return_dtype=bool) |
-                pl.col("cc_normalized").map_elements(lambda x: match_value_in_columns(recipient, x), return_dtype=bool)
+            recipient_mask = pl.col("to_normalized").map_elements(
+                lambda x: match_value_in_columns(recipient, x), return_dtype=bool
+            ) | pl.col("cc_normalized").map_elements(
+                lambda x: match_value_in_columns(recipient, x), return_dtype=bool
             )
             mask = mask & recipient_mask
-        
+
         # --- Subject filter ---
         if subject:
-            subject_mask = pl.col("subject").map_elements(lambda x: smart_subject_match(subject, x), return_dtype=bool)
+            subject_mask = pl.col("subject").map_elements(
+                lambda x: smart_subject_match(subject, x), return_dtype=bool
+            )
             mask = mask & subject_mask
 
         # --- Date filtering (normalize to datetime) ---
@@ -156,14 +191,14 @@ def sentiment_analysis_tool(
             .dt.convert_time_zone("UTC")
             .alias("date_dt")
         )
-        
+
         if start_date:
             start_dt = parse_datetime_utc(start_date)
             mask = mask & (pl.col("date_dt") >= start_dt)
 
         if end_date:
             end_dt = parse_datetime_utc(end_date)
-            if len(end_date) == 10: # If only date provided, include the full day
+            if len(end_date) == 10:  # If only date provided, include the full day
                 end_dt = end_dt + timedelta(days=1) - timedelta(seconds=1)
             mask = mask & (pl.col("date_dt") <= end_dt)
 
@@ -190,16 +225,25 @@ def sentiment_analysis_tool(
         .then(pl.col("body").struct.field("text"))
         .otherwise(pl.lit(""))
     )
-    
+
     # Add sentiment scores directly to the analysis dataframe
     analysis_df = analysis_df.with_columns(
         safe_text_extraction_expr.map_elements(
-            lambda text: analyzer.polarity_scores(str(text or ""))['compound'],
-            return_dtype=pl.Float64
+            lambda text: analyzer.polarity_scores(str(text or ""))["compound"],
+            return_dtype=pl.Float64,
         ).alias("sentiment_score")
     )
 
-    sentiments = analysis_df.select(["sentiment_score", "date_dt" if "date_dt" in analysis_df.columns else pl.lit(None, dtype=pl.Datetime).alias("date")])
+    sentiments = analysis_df.select(
+        [
+            "sentiment_score",
+            (
+                "date_dt"
+                if "date_dt" in analysis_df.columns
+                else pl.lit(None, dtype=pl.Datetime).alias("date")
+            ),
+        ]
+    )
 
     if sentiments.is_empty():
         return "Found emails, but could not extract text to analyze sentiment."
@@ -208,18 +252,25 @@ def sentiment_analysis_tool(
     # High-level summary (always calculated)
     overall_summary = sentiments.select(
         pl.mean("sentiment_score").alias("average_sentiment"),
-        pl.col("sentiment_score").map_elements(classify_sentiment, return_dtype=pl.String).value_counts().alias("sentiment_counts"),
-        pl.len().alias("total_emails")
+        pl.col("sentiment_score")
+        .map_elements(classify_sentiment, return_dtype=pl.String)
+        .value_counts()
+        .alias("sentiment_counts"),
+        pl.len().alias("total_emails"),
     ).to_dicts()[0]
 
-    avg_score = overall_summary['average_sentiment']
-    total_emails = overall_summary['total_emails']
-    counts_data = overall_summary['sentiment_counts']
+    avg_score = overall_summary["average_sentiment"]
+    total_emails = overall_summary["total_emails"]
+    counts_data = overall_summary["sentiment_counts"]
     if isinstance(counts_data, dict):
         counts_data = [counts_data]
-    counts = {d['sentiment_score']: d['count'] for d in counts_data}
-    
-    summary_title = f"Overall Sentiment Analysis Summary for Thread ID: {threadId}" if threadId else "Overall Sentiment Analysis Summary"
+    counts = {d["sentiment_score"]: d["count"] for d in counts_data}
+
+    summary_title = (
+        f"Overall Sentiment Analysis Summary for Thread ID: {threadId}"
+        if threadId
+        else "Overall Sentiment Analysis Summary"
+    )
     summary = (
         f"{summary_title}\n"
         f"- Total Emails Analyzed: {total_emails}\n"
@@ -232,11 +283,13 @@ def sentiment_analysis_tool(
     # --- NEW: Detailed Breakdown by Email ---
     breakdown_lines = ["\n---", "Sentiment Breakdown by Email (chronological):"]
     for email in analysis_df.iter_rows(named=True):
-        score = email['sentiment_score']
+        score = email["sentiment_score"]
         sentiment_class = classify_sentiment(score)
         # Format the 'from' field for better readability
-        sender_name = str(email.get('from', 'N/A')).split('<')[0].strip().replace('"', '')
-        
+        sender_name = (
+            str(email.get("from", "N/A")).split("<")[0].strip().replace('"', "")
+        )
+
         line = (
             f"\n- From: {sender_name}\n"
             f"  Date: {human_readable_date(email.get('date'))}\n"
