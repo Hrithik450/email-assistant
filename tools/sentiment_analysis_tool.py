@@ -4,7 +4,7 @@ import polars as pl
 from datetime import datetime, timedelta, timezone
 
 # Import the full email DataFrame
-from lib.load_data import df
+from lib.pipeline import df
 
 # Import helper functions
 from lib.utils import normalize_list, match_value_in_columns, smart_subject_match
@@ -16,10 +16,13 @@ from langchain_core.output_parsers import StrOutputParser
 import os
 
 # --- NEW: Initialize LLM and Prompt for rich sentiment analysis ---
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2, google_api_key=os.getenv("GEMINI_API_KEY"))
+llm = ChatGoogleGenerativeAI(
+    model="gemini-1.5-flash",
+    temperature=0.2,
+    google_api_key=os.getenv("GEMINI_API_KEY"),
+)
 
-sentiment_prompt_template = ChatPromptTemplate.from_template(
-    """
+sentiment_prompt_template = ChatPromptTemplate.from_template("""
     You are an expert in communication analysis. Based on the following email text(s), provide a detailed sentiment and emotional analysis.
 
     **Do not just say "positive" or "negative".** Instead, provide a structured breakdown covering the following points:
@@ -34,14 +37,14 @@ sentiment_prompt_template = ChatPromptTemplate.from_template(
     ---
     {email_content}
     ---
-    """
-)
+    """)
 
 sentiment_analysis_chain = sentiment_prompt_template | llm | StrOutputParser()
 
 
 # Initialize the VADER analyzer (can be kept for a quick numerical score if needed)
 analyzer = SentimentIntensityAnalyzer()
+
 
 def parse_datetime_utc(date_str: str) -> datetime:
     """
@@ -53,6 +56,7 @@ def parse_datetime_utc(date_str: str) -> datetime:
     else:  # full datetime
         dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
     return dt.replace(tzinfo=timezone.utc)
+
 
 def human_readable_date(timestamp) -> str:
     """
@@ -69,6 +73,7 @@ def human_readable_date(timestamp) -> str:
             return "N/A"
 
     return timestamp.strftime("%a, %b %d, %Y %I:%M %p")
+
 
 @tool("sentiment_analysis_tool", parse_docstring=True)
 def sentiment_analysis_tool(
@@ -91,7 +96,9 @@ def sentiment_analysis_tool(
         start_date (str, optional): The start date for the analysis (YYYY-MM-DD).
         end_date (str, optional): The end date for the analysis (YYYY-MM-DD).
     """
-    print(f"sentiment_analysis_tool called with: threadId={threadId}, sender={sender}, recipient={recipient}, subject={subject}")
+    print(
+        f"sentiment_analysis_tool called with: threadId={threadId}, sender={sender}, recipient={recipient}, subject={subject}"
+    )
 
     if df.is_empty():
         return "Error: Email data is not loaded."
@@ -107,24 +114,41 @@ def sentiment_analysis_tool(
         if sender:
             sender = sender.lower()
             temp_df = temp_df.with_columns(
-                pl.col("from").map_elements(normalize_list, return_dtype=str).alias("from_normalized")
+                pl.col("from")
+                .map_elements(normalize_list, return_dtype=str)
+                .alias("from_normalized")
             )
-            mask = mask & pl.col("from_normalized").map_elements(lambda x: match_value_in_columns(sender, x), return_dtype=bool)
+            mask = mask & pl.col("from_normalized").map_elements(
+                lambda x: match_value_in_columns(sender, x), return_dtype=bool
+            )
         if recipient:
             recipient = recipient.lower()
             temp_df = temp_df.with_columns(
-                pl.col("to").map_elements(normalize_list, return_dtype=str).alias("to_normalized"),
-                pl.col("cc").map_elements(normalize_list, return_dtype=str).alias("cc_normalized")
+                pl.col("to")
+                .map_elements(normalize_list, return_dtype=str)
+                .alias("to_normalized"),
+                pl.col("cc")
+                .map_elements(normalize_list, return_dtype=str)
+                .alias("cc_normalized"),
             )
             mask = mask & (
-                pl.col("to_normalized").map_elements(lambda x: match_value_in_columns(recipient, x), return_dtype=bool) |
-                pl.col("cc_normalized").map_elements(lambda x: match_value_in_columns(recipient, x), return_dtype=bool)
+                pl.col("to_normalized").map_elements(
+                    lambda x: match_value_in_columns(recipient, x), return_dtype=bool
+                )
+                | pl.col("cc_normalized").map_elements(
+                    lambda x: match_value_in_columns(recipient, x), return_dtype=bool
+                )
             )
         if subject:
-            mask = mask & pl.col("subject").map_elements(lambda x: smart_subject_match(subject, x), return_dtype=bool)
+            mask = mask & pl.col("subject").map_elements(
+                lambda x: smart_subject_match(subject, x), return_dtype=bool
+            )
 
         temp_df = temp_df.with_columns(
-            pl.col("date").str.to_datetime("%Y-%m-%dT%H:%M:%S%z", strict=False).dt.convert_time_zone("UTC").alias("date_dt")
+            pl.col("date")
+            .str.to_datetime("%Y-%m-%dT%H:%M:%S%z", strict=False)
+            .dt.convert_time_zone("UTC")
+            .alias("date_dt")
         )
         if start_date:
             mask = mask & (pl.col("date_dt") >= parse_datetime_utc(start_date))
@@ -151,11 +175,15 @@ def sentiment_analysis_tool(
     # Limit context to avoid excessive token usage for very long threads
     # (This is a simple truncation; the next section discusses a better way)
     if len(full_conversation_text) > 20000:
-        full_conversation_text = full_conversation_text[:20000] + "\n\n[Content truncated due to length]"
+        full_conversation_text = (
+            full_conversation_text[:20000] + "\n\n[Content truncated due to length]"
+        )
 
     # --- NEW: Call the LLM for rich analysis ---
     try:
-        analysis_result = sentiment_analysis_chain.invoke({"email_content": full_conversation_text})
+        analysis_result = sentiment_analysis_chain.invoke(
+            {"email_content": full_conversation_text}
+        )
         return f"Found {analysis_df.height} emails. Here is the detailed sentiment analysis:\n\n{analysis_result}"
     except Exception as e:
         return f"An error occurred during sentiment analysis: {e}"

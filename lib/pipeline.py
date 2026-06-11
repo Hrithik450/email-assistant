@@ -1,14 +1,13 @@
 import sys
 
-# import pysqlite3
-# sys.modules["sqlite3"] = pysqlite3
 import os
 import sys
-import polars as pl
-import chromadb
 import gdown
-from functools import lru_cache
+import chromadb
+import polars as pl
+
 from dotenv import load_dotenv
+from functools import lru_cache
 from lib.utils import CHROMA_COLLECTION_NAME, EMAIL_JSON_PATH
 
 # --- Environment Check ---
@@ -20,17 +19,18 @@ if IS_STREAMLIT_ENVIRONMENT:
     import streamlit as st
 
 
-# --- Universal load_resources function ---
 def _load_resources_base():
     """
     Base function that loads data and connects to ChromaDB, adapting its behavior
     based on whether it's running in Streamlit or a command-line environment.
     """
     # --- 1. Conditional Data Source Logic ---
+
     data_path = ""
     if IS_STREAMLIT_ENVIRONMENT:
         # --- STREAMLIT PATH: Download from Google Drive ---
         print("Streamlit environment detected. Will download data from Google Drive.")
+
         output_path_mails = "clean_mails.jsonl"
         if not os.path.exists(output_path_mails):
             with st.spinner(
@@ -41,14 +41,13 @@ def _load_resources_base():
                     output=output_path_mails,
                     quiet=False,
                 )
-
         data_path = output_path_mails
+
     else:
         # --- COMMAND-LINE PATH: Use local file ---
         print("Command-line environment detected. Using local data file.")
         data_path = EMAIL_JSON_PATH
         if not os.path.exists(data_path):
-            # Provide a clear error if the local file is missing.
             raise FileNotFoundError(
                 f"Local data file not found at '{data_path}'. Please ensure it exists before running chatbot.py."
             )
@@ -84,7 +83,6 @@ def _load_resources_base():
     return df, collection
 
 
-# --- Environment-Specific Function Wrapper ---
 if IS_STREAMLIT_ENVIRONMENT:
 
     @st.cache_resource
@@ -92,7 +90,7 @@ if IS_STREAMLIT_ENVIRONMENT:
         return _load_resources_base()
 
 else:
-    load_dotenv()
+    load_dotenv(override=True)
 
     @lru_cache(maxsize=None)
     def load_resources():

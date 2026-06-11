@@ -72,6 +72,14 @@ def build_agent_graph():
     return builder.compile()
 
 
+# png_bytes = graph.get_graph().draw_mermaid_png()
+
+# with open("agent_graph.png", "wb") as f:
+#     f.write(png_bytes)
+
+# print("Graph saved as agent_graph.png")
+
+
 # ============================================================
 # CHAT LOOP
 # ============================================================

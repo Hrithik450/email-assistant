@@ -17,9 +17,6 @@ EMAIL_JSON_PATH = os.path.join(BASE_DIR, "data", "clean_mails.jsonl")
 
 EMBEDDING_MODEL_NAME = "text-embedding-3-large"
 
-HELPER_MODEL = "gpt-4.1"
-BASE_MODEL = "gpt-5-mini"
-
 
 def format_date(d):
     if isinstance(d, datetime):
@@ -34,7 +31,6 @@ def normalize_email_field(*values):
     normalized_emails = []
 
     for value in values:
-        # Polars Series safe check
         if isinstance(value, pl.Series):
             if value.is_empty():
                 continue

@@ -1,4 +1,4 @@
-from lib.load_data import chroma_collection
+from lib.pipeline import chroma_collection
 from langchain.tools import tool
 from langchain_openai import (
     OpenAIEmbeddings,
@@ -29,7 +29,9 @@ if chroma_collection is not None:
 
     # Mapping: doc text -> index
     doc_to_index = {doc: i for i, doc in enumerate(documents)}
+
     index_to_doc = {i: doc for doc, i in doc_to_index.items()}
+
     doc_to_meta = {
         doc: (meta if meta is not None else {})
         for doc, meta in zip(documents, metadatas or [{}] * len(documents))
