@@ -92,7 +92,7 @@ class ThreadService:
             {
                 "id": row[0],
                 "title": row[1],
-                "created_at": row[2],
+                "created_at": row[2].isoformat() if row[2] else None,
             }
             for row in rows
         ]
