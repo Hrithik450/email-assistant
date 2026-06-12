@@ -2,7 +2,6 @@ import os
 from datetime import datetime
 
 import pytz
-import json
 from dotenv import load_dotenv
 from typing import Annotated
 from rich.console import Console
