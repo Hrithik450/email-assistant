@@ -1,59 +1,149 @@
 # Email Assistant
 
-An intelligent agent that answers complex business questions by searching a private knowledge base of internal documents, emails, and chats.
+An AI-powered enterprise knowledge assistant that enables teams to search, analyze, and answer complex business questions across emails, documents, conversations, and organizational knowledge.
+
+## Overview
+
+Email Assistant combines Retrieval-Augmented Generation (RAG), metadata based, and agent-based reasoning to help users quickly find information, generate insights, and answer questions from large collections of unstructured business data.
+
+The system supports both qualitative and quantitative analysis by intelligently retrieving relevant context and leveraging specialized tools to generate accurate, explainable responses.
 
 ## Key Features
 
-- **Advanced RAG**: Uses a fine-tuned model and re-ranking for highly accurate search.
-- **Intelligent Agent**: Leverages LangChain to reason and use specialized tools for qualitative and quantitative analysis.
-- **Data Ingestion**: Processes `.docx`, `.txt`, and `.jsonl` files into a FAISS vector store.
-- **Interactive UI**: A user-friendly chat interface built with Streamlit.
+### Intelligent Knowledge Retrieval
 
-## How to Use
+- Semantic search across emails, documents, and structured data
+- Advanced Retrieval-Augmented Generation (RAG) pipeline
+- Re-ranking for improved retrieval accuracy
+- Context-aware answer generation
 
-### 1. Setup
+### Agent-Based Reasoning
 
-First, clone the repository and set up your environment.
+- Multi-step reasoning using LangGraph and LangChain
+- Tool-calling capabilities for specialized analysis
+- Support for both factual lookup and analytical queries
+- Source-grounded responses
 
-# Clone the repository
+### Data Processing Pipeline
 
-git clone https://github.com/tekthink-ai/email-assistant
-cd RE_assistant
+- Ingestion of documents, emails, and structured datasets
+- Automatic chunking and embedding generation
+- Metadata-aware indexing
+- Efficient vector search using ChromaDB
 
-# Install dependencies
+### Interactive User Experience
 
+- Streamlit-based chat interface
+- Conversational querying
+- Source attribution and contextual answers
+- Fast response generation
+
+## Supported Data Sources
+
+- Email datasets
+- JSONL records
+
+## Getting Started
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/tekthink-ai/email-assistant.git
+cd email-assistant
+```
+
+### 2. Create a Virtual Environment
+
+#### macOS / Linux
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+#### Windows
+
+```bash
+python -m venv venv
+venv\Scripts\activate
+```
+
+### 3. Install Dependencies
+
+```bash
 pip install -r requirements.txt
+```
 
-# Create and configure your environment file
+### 4. Configure Environment Variables
 
-cp .env.example .env
+Create a `.env` file in the project root and add the required credentials:
 
-### Next, add your OPENAI_API_KEY to the newly created .env file.
+```env
+GOOGLE_API_KEY="your_google_api_key"
+DATABASE_URL="postgresql://username:password@host:port/database"
+REDIS_URL="redis://username:password@host:port"
+CHROMA_API_KEY="your_chroma_api_key"
+CHROMA_TENANT="your_chroma_tenant_id"
+CHROMA_DATABASE="your_chroma_database_name"
+EMAIL_JSONL_GDRIVE_ID="your_google_drive_file_id"
+```
 
-### 2. Process Your Data
+### 5. Run the Application
 
-### Place all your source documents into the /data directory. Then, run the processing script to create the knowledge base. This only needs to be done once or when your documents change.
+```bash
+python main.py
+```
 
-python process_data.py
+The application will start and you can begin interacting with the assistant.
 
-### 3. Run the Application
+## Running the Application
 
-### You can interact with the agent via the command line or the web interface.
+### Web Interface (Recommended)
 
-### Option A: Web App (Recommended)
-
+```bash
 streamlit run streamlit_app.py
+```
 
-### Navigate to http://localhost:8501 in your browser.
+Open:
 
-### Option B: Command-Line (For Debugging)
+```text
+http://localhost:8501
+```
 
-python agent_pro.py
+## Technology Stack
 
-# Technology Stack
+### AI & Agent Frameworks
 
-- **AI & Orchestration**: LangChain, OpenAI
-- **NLP & Embeddings**: SentenceTransformers, Hugging Face
-- **Vector Database**: FAISS
-- **Data Handling**: Pandas
-- **Web Interface**: Streamlit
+- LangGraph
+- LangChain
+- Google Gemini
+
+### Embeddings & NLP
+
+- Sentence Transformers
+- Hugging Face Transformers
+
+### Retrieval Infrastructure
+
+- ChromaDB
+- Vector Search
+
+### Data Processing
+
+- Pandas
+- Python
+
+### User Interface
+
+- Streamlit
+
+## Use Cases
+
+- Enterprise search
+- Email intelligence
+- Document question answering
+- Internal knowledge management
+
+## License
+
+This project is intended for research, experimentation, and enterprise knowledge assistant development.
