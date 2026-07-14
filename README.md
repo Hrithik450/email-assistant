@@ -1,148 +1,263 @@
 # Email Assistant
 
-An AI-powered enterprise knowledge assistant that enables teams to search, analyze, and answer complex business questions across emails, documents, conversations, and organizational knowledge.
+An AI-powered email knowledge assistant for searching, analyzing, and answering questions over email data using semantic retrieval, SQL-based reasoning, and a LangGraph agent.
 
 ## Overview
 
-Email Assistant combines Retrieval-Augmented Generation (RAG), metadata based, and agent-based reasoning to help users quickly find information, generate insights, and answer questions from large collections of unstructured business data.
+This project combines:
 
-The system supports both qualitative and quantitative analysis by intelligently retrieving relevant context and leveraging specialized tools to generate accurate, explainable responses.
+- A LangGraph-based agent with model routing
+- Hybrid retrieval over email content using ChromaDB, BM25, and reranking
+- Read-only relational querying over PostgreSQL email data
+- Thread/message persistence with PostgreSQL and Redis-backed caching
+- Evaluation utilities for both retrieval and agent behavior
 
-## Key Features
+## Architecture
 
-### Intelligent Knowledge Retrieval
+![Architecture](assets/images/email-assistant-architecture.svg)
 
-- Semantic search across emails, documents, and structured data
-- Advanced Retrieval-Augmented Generation (RAG) pipeline
-- Re-ranking for improved retrieval accuracy
-- Context-aware answer generation
+![Data Flow](assets/images/email-assistant-data-flow.svg)
 
-### Agent-Based Reasoning
+## Project Structure
 
-- Multi-step reasoning using LangGraph and LangChain
-- Tool-calling capabilities for specialized analysis
-- Support for both factual lookup and analytical queries
-- Source-grounded responses
+```text
+.
+├── src/
+│   ├── main.py                  # CLI chat entrypoint
+│   ├── lib/                     # prompts, pipeline, DB, routing, evaluation
+│   ├── models/                  # data models
+│   ├── services/                # thread and cache services
+│   └── tools/                   # semantic search, SQL, metadata, eval tools
+├── ui/
+│   └── streamlit_app.py         # Streamlit UI
+├── scripts/
+│   ├── migrate_data.py          # load normalized email data into Postgres
+│   └── run_eval.py              # run RAG and agent evaluation suites
+├── migrations/                  # Alembic migrations
+├── tests/                       # unit, integration, and eval tests
+├── assets/images/               # architecture diagrams
+├── docker-compose.yml           # local Postgres + Redis
+├── pyproject.toml               # project metadata and dependencies
+└── .env.example                 # required environment variables
+```
 
-### Data Processing Pipeline
+## Core Features
 
-- Ingestion of documents, emails, and structured datasets
-- Automatic chunking and embedding generation
-- Metadata-aware indexing
-- Efficient vector search using ChromaDB
+- Hybrid semantic retrieval using ChromaDB, BM25, query expansion, and cross-encoder reranking
+- Read-only SQL analysis over normalized email tables
+- Model-tier routing for simple, standard, and complex queries
+- Persistent chat threads and message history
+- Evaluation tooling for retrieval quality and agent grounding
+- Streamlit UI and CLI chat entrypoints
 
-### Interactive User Experience
+## Data Model
 
-- Streamlit-based chat interface
-- Conversational querying
-- Source attribution and contextual answers
-- Fast response generation
+The database separates application users from people found inside email data.
 
-## Supported Data Sources
+Application domain:
 
-- Email datasets
-- JSONL records
+- `user`
+- `thread`
+- `thread_messages`
 
-## Getting Started
+Email domain:
 
-### 1. Clone the Repository
+- `email_user`
+- `email_thread`
+- `email`
+- `recipient`
+- `attachment`
+- `email_label`
+
+This separation is especially important when querying through `relational_query_tool`.
+
+## Prerequisites
+
+- Python `3.14+`
+- `uv`
+- Docker and Docker Compose
+- API access for:
+  - Google Gemini (`GOOGLE_API_KEY`)
+  - OpenAI embeddings (`OPENAI_API_KEY`)
+  - Chroma Cloud (`CHROMA_API_KEY`, `CHROMA_TENANT`, `CHROMA_DATABASE`)
+
+## Setup
+
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/tekthink-ai/email-assistant.git
 cd email-assistant
 ```
 
-### 2. Create a Virtual Environment
-
-#### macOS / Linux
+### 2. Create your environment file
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
+cp .env.example .env
 ```
 
-#### Windows
-
-```bash
-python -m venv venv
-venv\Scripts\activate
-```
-
-### 3. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Configure Environment Variables
-
-Create a `.env` file in the project root and add the required credentials:
+Then update `.env` with real credentials:
 
 ```env
-GOOGLE_API_KEY="your_google_api_key"
-DATABASE_URL="postgresql://username:password@host:port/database"
-REDIS_URL="redis://username:password@host:port"
-CHROMA_API_KEY="your_chroma_api_key"
-CHROMA_TENANT="your_chroma_tenant_id"
-CHROMA_DATABASE="your_chroma_database_name"
-EMAIL_JSONL_GDRIVE_ID="your_google_drive_file_id"
+GOOGLE_API_KEY="your-google-api-key"
+OPENAI_API_KEY="your-openai-api-key"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5433/re_assistant"
+REDIS_URL="redis://localhost:6379"
+CHROMA_API_KEY="your-chroma-api-key"
+CHROMA_TENANT="your-chroma-tenant-id"
+CHROMA_DATABASE="your-chroma-database-name"
+EMAIL_JSONL_GDRIVE_ID="your-gdrive-file-id"
 ```
 
-### 5. Run the Application
+### 3. Install dependencies
 
 ```bash
-python main.py
+uv sync
 ```
 
-The application will start and you can begin interacting with the assistant.
-
-## Running the Application
-
-### Web Interface (Recommended)
+### 4. Start local infrastructure
 
 ```bash
-streamlit run streamlit_app.py
+docker compose up -d
 ```
 
-Open:
+This starts:
+
+- PostgreSQL with `pgvector` on `localhost:5433`
+- Redis on `localhost:6379`
+
+### 5. Run database migrations
+
+```bash
+uv run alembic upgrade head
+```
+
+### 6. Prepare data
+
+For local CLI usage, the pipeline expects a normalized JSONL file at:
 
 ```text
-http://localhost:8501
+src/lib/data/clean_mails.jsonl
 ```
 
-## Technology Stack
+To load normalized email records into PostgreSQL:
 
-### AI & Agent Frameworks
+```bash
+uv run python scripts/migrate_data.py
+```
+
+The migration script reads from:
+
+```text
+src/lib/data/norm_data.jsonl
+```
+
+## Running the App
+
+### CLI chat
+
+```bash
+uv run python src/main.py
+```
+
+### Streamlit UI
+
+```bash
+uv run streamlit run ui/streamlit_app.py
+```
+
+The Streamlit app is intended to provide a chat interface over the same agent/tooling stack.
+
+## Tools in the Agent
+
+### `semantic_search_tool`
+
+Searches email content using:
+
+- Query expansion
+- OpenAI embeddings
+- Chroma vector search
+- BM25 lexical retrieval
+- Cross-encoder reranking
+
+### `relational_query_tool`
+
+Executes read-only `SELECT` and `WITH` SQL queries against PostgreSQL with safety checks that reject write or destructive statements.
+
+### `metadata_filtering_tool`
+
+Provides metadata-based filtering utilities over email records.
+
+## Testing
+
+Run the full pytest suite:
+
+```bash
+uv run pytest
+```
+
+Run only unit tests:
+
+```bash
+uv run pytest -m unit
+```
+
+Run integration tests:
+
+```bash
+uv run pytest -m integration
+```
+
+Notes:
+
+- Integration tests require a reachable PostgreSQL instance.
+- Redis-backed tests require `REDIS_URL`.
+- Some tests expect sample data under `src/lib/data/`.
+
+## Evaluation
+
+Run both RAG and agent evaluation suites:
+
+```bash
+uv run python scripts/run_eval.py
+```
+
+Run only RAG evaluation:
+
+```bash
+uv run python scripts/run_eval.py --rag
+```
+
+Run only agent evaluation:
+
+```bash
+uv run python scripts/run_eval.py --agent
+```
+
+Set a custom pass threshold:
+
+```bash
+uv run python scripts/run_eval.py --threshold 3.5
+```
+
+## Current Stack
 
 - LangGraph
 - LangChain
 - Google Gemini
-
-### Embeddings & NLP
-
-- Sentence Transformers
-- Hugging Face Transformers
-
-### Retrieval Infrastructure
-
+- OpenAI Embeddings
 - ChromaDB
-- Vector Search
-
-### Data Processing
-
-- Pandas
-- Python
-
-### User Interface
-
+- PostgreSQL + pgvector
+- Redis
+- Polars
 - Streamlit
+- Pytest
+- Alembic
 
-## Use Cases
+## Notes
 
-- Enterprise search
-- Email intelligence
-- Document question answering
-- Internal knowledge management
+- Dependency management is handled through `pyproject.toml` and `uv.lock`, not `requirements.txt`.
+- Local infrastructure is expected to run via Docker Compose.
 
 ## License
 

@@ -30,3 +30,4 @@ env/
 .*json
 
 clean_mails
+.aider*
