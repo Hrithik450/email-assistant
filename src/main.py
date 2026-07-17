@@ -14,12 +14,12 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, START
 
 from src.lib.prompts import SYSTEM_PROMPT
-from src.lib.router import get_model_for_query, MODEL_TIERS
+from src.lib.router import get_tier_and_model, MODEL_TIERS
+from src.lib.utils import render_for_display
 from src.services.thread_service import ThreadService
 
 from src.tools.semantic_search_tool import semantic_search_tool
-from tools.relational_query_tool import relational_query_tool
-from src.tools.eval_tool import rag_eval_tool
+from src.tools.relational_query_tool import relational_query_tool
 
 load_dotenv(override=True)
 
@@ -69,8 +69,7 @@ def route_model(state: AgentState) -> AgentState:
 
     query = latest_human_message.content if latest_human_message else ""
 
-    model = get_model_for_query(query)
-    tier = next(k for k, v in MODEL_TIERS.items() if v == model)
+    tier, model = get_tier_and_model(query)
 
     console.log(f"[dim]Routing → {model} ({tier})[/dim]")
     return {"model_tier": tier}
@@ -156,7 +155,7 @@ def chat_loop(user_id: str) -> None:
         )
 
         print("\n--- Final Answer ---")
-        console.print(Markdown(response))
+        console.print(Markdown(render_for_display(response)))
         print("--------------------\n")
 
 

@@ -13,9 +13,86 @@ BASE_DIR = os.path.dirname(__file__)
 
 CHROMA_COLLECTION_NAME = "organization_data"
 
-EMAIL_JSON_PATH = os.path.join(BASE_DIR, "data", "clean_mails.jsonl")
+EMAIL_JSON_PATH = os.path.join(BASE_DIR, "data", "raw_mails.jsonl")
 
 EMBEDDING_MODEL_NAME = "text-embedding-3-large"
+
+_ID_TAG_RE = re.compile(r"\s*<(id|tid)>.*?</\1>", re.IGNORECASE | re.DOTALL)
+_SOURCES_SPLIT_RE = re.compile(r"(?im)^[ \t>*-]*sources\s*:?[ \t]*$|\bsources\s*:")
+_SOURCE_ENTRY_RE = re.compile(r"(.*?)<id>(.*?)</id>", re.IGNORECASE | re.DOTALL)
+
+
+def strip_id_tags(text: str) -> str:
+    """Remove <id>...</id> / <tid>...</tid> markers for user-facing display.
+
+    The tagged form is kept in storage and conversation history so ids stay
+    available as context for follow-up queries; only the displayed copy is cleaned.
+    """
+    if not text:
+        return text
+    cleaned = _ID_TAG_RE.sub("", text)
+    # Tidy separators left dangling once a trailing id is removed (e.g. "Subject (Date) —").
+    cleaned = re.sub(r"[ \t]*[—\-|]\s*$", "", cleaned, flags=re.MULTILINE)
+    return cleaned.rstrip()
+
+
+def _clean_source_label(label: str) -> str:
+    """Normalize a raw source entry into a clean one-line label."""
+    label = _ID_TAG_RE.sub("", label)
+    label = " ".join(label.split())  # collapse newlines / runs of whitespace
+    label = label.lstrip("-*•·—| \t")  # drop leading bullet / separator noise
+    return label.strip(" \t—-|")
+
+
+def _render_sources_block(raw_sources: str) -> str:
+    """Dedup source entries and render them as clean markdown bullets."""
+    entries: list[str] = []
+    seen: set[str] = set()
+
+    matches = list(_SOURCE_ENTRY_RE.finditer(raw_sources))
+    if matches:
+        for m in matches:
+            label = _clean_source_label(m.group(1))
+            email_id = m.group(2).strip()
+            key = email_id or label.lower()
+            if not label or key in seen:
+                continue
+            seen.add(key)
+            entries.append(label)
+    else:
+        # No id tags — fall back to line-based dedup.
+        for line in raw_sources.splitlines():
+            label = _clean_source_label(line)
+            if not label or label.lower() in seen:
+                continue
+            seen.add(label.lower())
+            entries.append(label)
+
+    if not entries:
+        return ""
+    bullets = "\n".join(f"- {e}" for e in entries)
+    return f"Sources:\n{bullets}"
+
+
+def render_for_display(text: str) -> str:
+    """Prepare an assistant reply for the end user.
+
+    Strips id tags from the body and rewrites the trailing "Sources" section as a
+    deduplicated markdown bullet list. Storage keeps the original tagged text.
+    """
+    if not text:
+        return text
+
+    parts = _SOURCES_SPLIT_RE.split(text, maxsplit=1)
+    body = strip_id_tags(parts[0]).rstrip()
+
+    if len(parts) == 1:
+        return body
+
+    sources = _render_sources_block(parts[1])
+    if not sources:
+        return body
+    return f"{body}\n\n{sources}"
 
 
 def format_date(d):
@@ -258,7 +335,7 @@ def get_best_match_from_token_map(
 
 def clean_date_in_jsonl():
     input_file = "lib/data/all_mails.jsonl"
-    output_file = "lib/data/clean_mails.jsonl"
+    output_file = "lib/data/raw_mails.jsonl"
 
     def clean_date_str(date_str: str) -> str:
         """Clean ISO8601 timestamp string and convert to UTC."""

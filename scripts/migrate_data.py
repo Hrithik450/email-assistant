@@ -202,7 +202,7 @@ def migrate(path: Path = NORM_DATA, batch_size: int = BATCH_SIZE) -> None:
 
                 if len(batch) >= batch_size:
                     batch_num += 1
-                    ins, skp = commit_batch(conn, batch, batch_num, total_inserted)
+                    ins, skp = commit_batch(conn, batch)
                     total_inserted += ins
                     total_skipped += skp
                     print(
@@ -212,7 +212,7 @@ def migrate(path: Path = NORM_DATA, batch_size: int = BATCH_SIZE) -> None:
 
         if batch:
             batch_num += 1
-            ins, skp = commit_batch(conn, batch, batch_num, total_inserted)
+            ins, skp = commit_batch(conn, batch)
             total_inserted += ins
             total_skipped += skp
             print(

@@ -1,6 +1,7 @@
 import re
 import json
 from pathlib import Path
+
 try:
     from src.lib.helper import getaddresses, parseaddr
 except ImportError:
@@ -16,15 +17,14 @@ DEFAULT_OUTPUT_PATH = BASE_DIR / "data" / "norm_data.jsonl"
 DEFAULT_BATCH_SIZE = 500
 
 
-
 # Low-level helpers
-
 def normalize_text(value):
     if value is None:
         return ""
 
     # Removing "" '' <>
     return re.sub(r"[\"'<>]", "", str(value)).strip()
+
 
 def normalize_email_date(date: str):
     ist = timezone(timedelta(hours=5, minutes=30))
@@ -56,11 +56,13 @@ def normalize_email_date(date: str):
 
     return date
 
+
 def extract_display_name_from_email(email):
     if "@" not in email:
         return ""
 
     return email.rsplit("@", 1)[0]
+
 
 def normalize_email_address(value):
     original_value = normalize_text(value)
@@ -86,6 +88,7 @@ def normalize_email_address(value):
         "domain": domain,
     }
 
+
 def normalize_email_address_list(value):
     if not value:
         return []
@@ -108,8 +111,8 @@ def normalize_email_address_list(value):
     return normalized_addresses
 
 
-
 # Email normalization
+
 
 def normalize_email_record(email):
 
@@ -145,7 +148,9 @@ def normalize_email_batch(emails):
         except Exception:
             normalized_email = {
                 "id": email.get("id", "") if isinstance(email, dict) else "",
-                "threadId": email.get("threadId", "") if isinstance(email, dict) else "",
+                "threadId": (
+                    email.get("threadId", "") if isinstance(email, dict) else ""
+                ),
                 "date": email.get("date", "") if isinstance(email, dict) else "",
                 "from": email.get("from", "") if isinstance(email, dict) else "",
                 "to": email.get("to", []) if isinstance(email, dict) else [],
@@ -153,7 +158,9 @@ def normalize_email_batch(emails):
                 "subject": email.get("subject", "") if isinstance(email, dict) else "",
                 "snippet": email.get("snippet", "") if isinstance(email, dict) else "",
                 "body": email.get("body", "") if isinstance(email, dict) else "",
-                "attachments": email.get("attachments", []) if isinstance(email, dict) else [],
+                "attachments": (
+                    email.get("attachments", []) if isinstance(email, dict) else []
+                ),
                 "labels": email.get("labels", []) if isinstance(email, dict) else [],
             }
 
@@ -162,8 +169,8 @@ def normalize_email_batch(emails):
     return normalized_emails
 
 
-
 # File processing
+
 
 def write_normalized_batch(batch, output_file):
     for email in normalize_email_batch(batch):
@@ -182,9 +189,10 @@ def normalizer(input_path, output_path, batch_size=DEFAULT_BATCH_SIZE):
     total = 0
     batch = []
 
-    with input_path.open("r", encoding="utf-8") as input_file, output_path.open(
-        "w", encoding="utf-8"
-    ) as output_file:
+    with (
+        input_path.open("r", encoding="utf-8") as input_file,
+        output_path.open("w", encoding="utf-8") as output_file,
+    ):
         for line_number, line in enumerate(input_file, start=1):
             line = line.strip()
             if not line:

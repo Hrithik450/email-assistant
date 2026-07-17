@@ -133,7 +133,7 @@ uv run alembic upgrade head
 The retrieval and metadata-filtering tools read a normalized JSONL snapshot at:
 
 ```text
-src/lib/data/clean_mails.jsonl
+src/lib/data/raw_mails.jsonl
 ```
 
 To load normalized email records into PostgreSQL, run the migration script, which reads from:

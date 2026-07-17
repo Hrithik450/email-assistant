@@ -22,7 +22,7 @@ def _load_resources_base():
     if IS_STREAMLIT_ENVIRONMENT:
         import gdown
 
-        output_path_mails = "clean_mails.jsonl"
+        output_path_mails = "raw_mails.jsonl"
         if not os.path.exists(output_path_mails):
             with st.spinner(
                 "Downloading metadata from Google Drive (first-time setup)..."

@@ -2,7 +2,7 @@ import re
 from langchain.tools import tool
 
 from src.lib.db import pool
-from src.lib.logger import get_logger
+from src.lib.logger import get_logger, log_tool_call
 
 logger = get_logger(__name__)
 
@@ -84,6 +84,7 @@ def relational_query_tool(query: str, limit: int = _DEFAULT_ROWS) -> str:
         query: A SQL SELECT (or WITH …) query to execute. No semicolons required.
         limit: Maximum rows to return (default 20, hard cap 100).
     """
+    log_tool_call("relational_query_tool", query)
     err = _validate_query(query)
     if err:
         return f"Query rejected: {err}"

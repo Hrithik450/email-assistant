@@ -1,9 +1,5 @@
-# --- THIS IS THE FIX ---
-# It checks if the app is running on Streamlit Cloud by looking for a specific environment variable.
-# The sqlite3 patch will ONLY run when deployed to the cloud.
 import sys
 
-# --- THIS IS THE NEW, ROBUST FIX ---
 # This ensures the patch runs before chromadb is ever touched.
 IS_STREAMLIT_ENVIRONMENT = "streamlit" in sys.modules
 if IS_STREAMLIT_ENVIRONMENT:
@@ -18,37 +14,48 @@ if IS_STREAMLIT_ENVIRONMENT:
 import pytz
 import streamlit as st
 from datetime import datetime
+from typing import Annotated
+from typing_extensions import TypedDict
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 st.set_page_config(page_title="AI Email Assistant", page_icon="📧")
 
 # Import the tools and agent components from your existing files
+from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
-from langgraph.graph import StateGraph, MessagesState, START
-from app.lib.prompts import SYSTEM_PROMPT
+from langgraph.graph import StateGraph, START
+from src.lib.prompts import SYSTEM_PROMPT
+from src.lib.router import get_tier_and_model, MODEL_TIERS
+from src.lib.utils import render_for_display
 
-from app.tools.semantic_search_tool import semantic_search_tool
-from app.tools.metadata_filtering_tool import email_filtering_tool
+from src.tools.semantic_search_tool import semantic_search_tool
+from src.tools.relational_query_tool import relational_query_tool
 
 # This will trigger the data loading and Chroma connection via st.cache_resource
-from app.lib.pipeline import df, chroma_collection
+from src.lib.pipeline import df, chroma_collection
 
 # Import your database logic
-from app.services.thread_service import ThreadService
+from src.services.thread_service import ThreadService
 
 # -------------------- CONFIG --------------------
 IST = pytz.timezone("Asia/Kolkata")
 today_date = datetime.now(IST).strftime("%B %d, %Y")
 USER_ID = "63f05e7a-35ac-4deb-9f38-e2864cdf3a1d"  # Hardcoded for this example
 
-tools = [semantic_search_tool, email_filtering_tool]
+tools = [semantic_search_tool, relational_query_tool]
 tool_node = ToolNode(tools)
 
 
+class AgentState(TypedDict):
+    messages: Annotated[list, add_messages]
+    model_tier: str  # "simple" | "standard" | "complex"
+
+
 @st.cache_resource
-def get_llm():
+def _get_llm(model_name: str):
+    """Build and cache a tool-bound LLM per model name."""
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-pro",
+        model=model_name,
         temperature=0.4,
         max_retries=2,
         google_api_key=st.secrets["GOOGLE_API_KEY"],
@@ -64,19 +71,36 @@ def initialize_agent():
     """
     print("Initializing LangGraph agent...")
 
-    def call_model(state: MessagesState) -> MessagesState:
-        """
-        Sends messages to the model and returns the response wrapped in MessagesState format.
-        """
-        response = get_llm().invoke(input=state["messages"])
+    def route_model(state: AgentState) -> AgentState:
+        """Classify query complexity and pick the appropriate Gemini tier."""
+        latest_human_message = next(
+            (
+                m
+                for m in reversed(state["messages"])
+                if getattr(m, "type", None) == "human"
+            ),
+            None,
+        )
+        query = latest_human_message.content if latest_human_message else ""
+        tier, model = get_tier_and_model(query)
+        print(f"Routing → {model} ({tier})")
+        return {"model_tier": tier}
+
+    def call_model(state: AgentState) -> AgentState:
+        """Send messages to the tier-appropriate model and return its response."""
+        tier = state.get("model_tier", "standard")
+        model_name = MODEL_TIERS.get(tier, MODEL_TIERS["standard"])
+        response = _get_llm(model_name).invoke(input=state["messages"])
         return {"messages": [response]}
 
-    builder = StateGraph(MessagesState)
+    builder = StateGraph(AgentState)
 
+    builder.add_node("router", route_model)
     builder.add_node("agent", call_model)
     builder.add_node("tools", tool_node)
 
-    builder.add_edge(START, "agent")
+    builder.add_edge(START, "router")
+    builder.add_edge("router", "agent")
     builder.add_conditional_edges("agent", tools_condition)
     builder.add_edge("tools", "agent")
 
@@ -175,7 +199,10 @@ if not st.session_state.messages:
 # Display chat messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+        if message["role"] == "assistant":
+            st.markdown(render_for_display(message["content"]))
+        else:
+            st.markdown(message["content"])
 
 # Accept user input
 if input := st.chat_input("Ask a question about your emails..."):
@@ -225,10 +252,13 @@ if input := st.chat_input("Ask a question about your emails..."):
             else:
                 agent_answer = str(airesponse.content)
 
-            st.markdown(agent_answer)
+            st.markdown(render_for_display(agent_answer))
 
-    # Add assistant response to chat history
-    st.session_state.messages.append({"role": "assistant", "content": agent_answer})
+    # Add assistant response to chat history (display-cleaned for the UI,
+    # while the database keeps the original tagged text for follow-up context).
+    st.session_state.messages.append(
+        {"role": "assistant", "content": render_for_display(agent_answer)}
+    )
 
     # Save the user's original prompt and the agent's answer to the database
     ThreadService.update_thread_messages(

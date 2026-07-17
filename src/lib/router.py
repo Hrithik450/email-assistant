@@ -58,7 +58,7 @@ _COMPLEX_PATTERNS = [
 
 
 MODEL_TIERS: dict[str, str] = {
-    "simple": "gemini-2.5-flash-lite",
+    "simple": "gemini-2.5-flash",
     "standard": "gemini-2.5-flash",
     "complex": "gemini-3.5-flash",
 }
@@ -97,6 +97,16 @@ def get_model_for_query(query: str) -> str:
     """Return the Gemini model name appropriate for this query."""
     tier = classify_complexity(query)
     return MODEL_TIERS[tier]
+
+
+def get_tier_and_model(query: str) -> tuple[str, str]:
+    """Return (tier, model_name) for a query.
+
+    Prefer this over reverse-mapping a model name back to a tier: several tiers
+    may share the same model, so that reverse lookup is ambiguous.
+    """
+    tier = classify_complexity(query)
+    return tier, MODEL_TIERS[tier]
 
 
 def get_model_for_tier(tier: str) -> str:

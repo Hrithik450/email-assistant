@@ -9,7 +9,7 @@ from langchain_openai import OpenAIEmbeddings
 from rank_bm25 import BM25Okapi
 from sentence_transformers import CrossEncoder
 
-from src.lib.logger import get_logger
+from src.lib.logger import get_logger, log_tool_call
 from src.lib.utils import EMBEDDING_MODEL_NAME
 
 logger = get_logger(__name__)
@@ -94,6 +94,48 @@ Provide these alternative questions separated by newlines. Original question: {q
     return _generate_queries
 
 
+def _fetch_email_sources(email_ids: list[str]) -> dict[str, dict]:
+    """Fetch sender / subject / date for gmail email ids from Postgres.
+
+    Returns a map keyed by gmail_email_id. Missing ids are simply absent.
+    Never raises — attribution is best-effort and must not break search.
+    """
+    ids = [e for e in dict.fromkeys(email_ids) if e]
+    if not ids:
+        return {}
+
+    try:
+        from src.lib.db import pool
+
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT e.gmail_email_id,
+                           COALESCE(NULLIF(u.display_name, ''), u.email) AS sender,
+                           e.subject,
+                           e.sent_at
+                    FROM email e
+                    LEFT JOIN email_user u ON u.id = e.sender_id
+                    WHERE e.gmail_email_id = ANY(%s)
+                    """,
+                    (ids,),
+                )
+                rows = cur.fetchall()
+    except Exception as exc:
+        logger.warning("Source enrichment failed: %s", exc)
+        return {}
+
+    result: dict[str, dict] = {}
+    for gmail_id, sender, subject, sent_at in rows:
+        result[gmail_id] = {
+            "sender": sender or "Unknown sender",
+            "subject": subject or "(no subject)",
+            "date": sent_at.strftime("%Y-%m-%d") if sent_at else "unknown date",
+        }
+    return result
+
+
 @tool("semantic_search_tool", parse_docstring=True)
 def semantic_search_tool(query: str) -> str:
     """
@@ -102,6 +144,7 @@ def semantic_search_tool(query: str) -> str:
     Args:
         query (str): The natural language query.
     """
+    log_tool_call("semantic_search_tool", query)
     state = _init_search()
     if not state["ready"]:
         return "Error: Search infrastructure is unavailable."
@@ -177,9 +220,24 @@ def semantic_search_tool(query: str) -> str:
         zip(cross_scores, top_candidates), key=lambda x: x[0], reverse=True
     )
 
+    ranked_top = final_ranked[:10]
+    sources = _fetch_email_sources(
+        [info["email_id"] for _, (_, info) in ranked_top]
+    )
+
     output = []
-    for rel_score, (text, info) in final_ranked[:10]:
-        prefix = f"[id: {info['email_id']}]\n" if info["email_id"] else ""
-        output.append(f"{prefix}{text}")
+    for rel_score, (text, info) in ranked_top:
+        eid = info["email_id"]
+        src = sources.get(eid)
+        if src:
+            header = (
+                f"[Source] From: {src['sender']} | "
+                f"Subject: {src['subject']} | Date: {src['date']} | id: {eid}\n"
+            )
+        elif eid:
+            header = f"[id: {eid}]\n"
+        else:
+            header = ""
+        output.append(f"{header}{text}")
 
     return "\n\n---\n\n".join(output)
