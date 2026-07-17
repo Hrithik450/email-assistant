@@ -1,73 +1,71 @@
 # Email Assistant
 
-An AI-powered email knowledge assistant for searching, analyzing, and answering questions over email data using semantic retrieval, SQL-based reasoning, and a LangGraph agent.
+**An agentic AI system that turns an inbox into a queryable knowledge base.** Ask questions in natural language; the assistant plans, routes to the right model tier, calls specialized retrieval and SQL tools, and returns grounded, source-attributed answers.
+
+---
 
 ## Overview
 
-This project combines:
+A **LangGraph-orchestrated agent** that reasons about each query, routes it to the cheapest capable model tier, calls specialized retrieval and read-only SQL tools, and grounds every answer in retrieved evidence — with a built-in evaluation harness that scores whether it actually did.
 
-- A LangGraph-based agent with model routing
-- Hybrid retrieval over email content using ChromaDB, BM25, and reranking
-- Read-only relational querying over PostgreSQL email data
-- Thread/message persistence with PostgreSQL and Redis-backed caching
-- Evaluation utilities for both retrieval and agent behavior
+Three things make it more than a chatbot over search:
+
+- **Engineered answer quality** — hybrid retrieval (vector + BM25, query expansion, cross-encoder reranking) plus an LLM-as-judge suite that turns grounding and faithfulness into numbers you can track.
+- **Cost that scales with difficulty** — a zero-latency classifier routes each query across three Gemini tiers, so trivial queries stay cheap and hard ones get the reasoning they need.
+- **Safe by construction** — the SQL tool is read-only behind a defense-in-depth guardrail layer, so the agent reasons over relational data without ever being able to mutate it.
+
+The system is a modular, layered architecture. Some layers — live email ingestion, CI/CD, and cloud deployment — are scaffolded extension points rather than fully built, so the core (agent, retrieval, SQL, persistence, evaluation) runs end-to-end today.
+
+---
 
 ## Architecture
 
 ![Architecture](assets/images/email-system-architecture.svg)
+
+The diagram is the target architecture. A few components are still scaffolding rather than fully wired:
+
+- **Streamlit app** runs but diverges from the CLI — single `gemini-2.5-pro` (no tier routing), semantic-search + metadata-filtering tools (not SQL), `app.*` imports. Treat it as a UI prototype over the same core.
+- **Redis** has a working client and `CacheService` wrapper, but caching is not yet on the request path.
+- **Rate limiting** exists as a tokens-per-minute throttle in offline ingestion, not as a runtime guard.
+- **Planned:** CI/CD, container registry, cloud deployment, live inbox ingestion, and continuous-improvement feedback loops.
+
+---
+
+## Core Features
+
+- **Hybrid semantic retrieval** — query expansion → OpenAI embeddings → Chroma vector search fused with BM25 lexical retrieval → cross-encoder reranking, returning the top grounded chunks with source IDs.
+- **Guarded read-only SQL** — the agent writes `SELECT` / `WITH` queries against a normalized email schema; a validation layer rejects DML/DDL and dangerous functions, and every query runs inside a `READ ONLY` transaction with a hard row cap.
+- **Adaptive model routing** — heuristic complexity classification (keywords + regex, no extra LLM call) routes each query to the cheapest model tier that can handle it, erring upward when uncertain.
+- **Persistent chat threads** — threads and message history are stored in PostgreSQL, with recent-context windowing for conversational continuity.
+- **Built-in evaluation** — an LLM-as-judge scores retrieval quality (context relevance, faithfulness, answer relevance, completeness) and agent behavior (response quality, factual grounding, tool appropriateness, conciseness).
+- **Two interfaces** — a Rich-powered CLI and a Streamlit chat UI.
+
+---
 
 ## Project Structure
 
 ```text
 .
 ├── src/
-│   ├── main.py                  # CLI chat entrypoint
-│   ├── lib/                     # prompts, pipeline, DB, routing, evaluation
-│   ├── models/                  # data models
+│   ├── main.py                  # CLI chat entrypoint + LangGraph agent
+│   ├── lib/                     # router, pipeline, db, cache, prompts, evaluator, ingestion, utils
+│   ├── models/                  # SQLAlchemy data models
 │   ├── services/                # thread and cache services
-│   └── tools/                   # semantic search, SQL, and eval tools
+│   └── tools/                   # semantic search, SQL, metadata filtering, eval tools
 ├── ui/
-│   └── streamlit_app.py         # Streamlit UI
+│   └── streamlit_app.py         # Streamlit UI (prototype over the core stack)
 ├── scripts/
 │   ├── migrate_data.py          # load normalized email data into Postgres
 │   └── run_eval.py              # run RAG and agent evaluation suites
 ├── migrations/                  # Alembic migrations
 ├── tests/                       # unit, integration, and eval tests
-├── assets/images/               # architecture diagrams
-├── docker-compose.yml           # local Postgres + Redis
-├── pyproject.toml               # project metadata and dependencies
+├── assets/images/               # architecture diagram
+├── docker-compose.yml           # local Postgres (pgvector) + Redis
+├── pyproject.toml               # project metadata and dependencies (uv)
 └── .env.example                 # required environment variables
 ```
 
-## Core Features
-
-- Hybrid semantic retrieval using ChromaDB, BM25, query expansion, and fine tuned cross-encoder reranking
-- Read-only SQL analysis over normalized email tables
-- Model-tier routing for simple, standard, and complex queries
-- Persistent chat threads and message history
-- Evaluation tooling for retrieval quality and agent grounding
-- Streamlit UI and CLI chat entrypoints
-
-## Data Model
-
-The database separates application users from people found inside email data.
-
-Application domain:
-
-- `user`
-- `thread`
-- `thread_messages`
-
-Email domain:
-
-- `email_user`
-- `email_thread`
-- `email`
-- `recipient`
-- `attachment`
-- `email_label`
-
-This separation is especially important when querying through `relational_query_tool`.
+---
 
 ## Prerequisites
 
@@ -132,23 +130,23 @@ uv run alembic upgrade head
 
 ### 6. Prepare data
 
-For local CLI usage, the pipeline expects a normalized JSONL file at:
+The retrieval and metadata-filtering tools read a normalized JSONL snapshot at:
 
 ```text
-src/lib/data/norm_emails.jsonl
+src/lib/data/clean_mails.jsonl
 ```
 
-To load normalized email records into PostgreSQL:
+To load normalized email records into PostgreSQL, run the migration script, which reads from:
+
+```text
+src/lib/data/norm_data.jsonl
+```
 
 ```bash
 uv run python scripts/migrate_data.py
 ```
 
-The migration script reads from:
-
-```text
-src/lib/data/norm_data.jsonl
-```
+> Vector embeddings are expected to live in a Chroma Cloud collection (`organization_data`); the app connects to it at runtime rather than building the index locally.
 
 ## Running the App
 
@@ -164,23 +162,7 @@ uv run python src/main.py
 uv run streamlit run ui/streamlit_app.py
 ```
 
-The Streamlit app is intended to provide a chat interface over the same agent/tooling stack.
-
-## Tools in the Agent
-
-### `semantic_search_tool`
-
-Searches email content using:
-
-- Query expansion
-- OpenAI embeddings
-- Chroma vector search
-- BM25 lexical retrieval
-- Cross-encoder reranking
-
-### `relational_query_tool`
-
-Executes read-only `SELECT` and `WITH` SQL queries against PostgreSQL with safety checks that reject write or destructive statements.
+The Streamlit app provides a chat interface over the same retrieval/tooling core. See the architecture notes above for how it currently differs from the CLI agent.
 
 ## Testing
 
@@ -236,23 +218,19 @@ uv run python scripts/run_eval.py --threshold 3.5
 
 ## Current Stack
 
-- LangGraph
-- LangChain
-- Google Gemini
-- OpenAI Embeddings
-- ChromaDB
-- PostgreSQL + pgvector
-- Redis
-- Polars
-- Streamlit
-- Pytest
-- Alembic
+- **Orchestration:** LangGraph, LangChain
+- **Models:** Google Gemini (chat), OpenAI (embeddings & summarization)
+- **Retrieval:** ChromaDB, BM25 (`rank-bm25`), cross-encoder reranking (`sentence-transformers`)
+- **Data:** PostgreSQL + `pgvector`, Redis, Polars
+- **Interfaces:** Rich CLI, Streamlit
+- **Tooling:** Pytest, Alembic, `uv`
 
 ## Notes
 
 - Dependency management is handled through `pyproject.toml` and `uv.lock`, not `requirements.txt`.
-- Local infrastructure is expected to run via Docker Compose.
+- Local infrastructure runs via Docker Compose.
 
 ## License
 
-This project is intended for research, experimentation, and enterprise knowledge assistant development.
+This project is intended for research, experimentation, and enterprise knowledge-assistant development.
+</content>
