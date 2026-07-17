@@ -14,9 +14,7 @@ This project combines:
 
 ## Architecture
 
-![Architecture](assets/images/email-assistant-architecture.svg)
-
-![Data Flow](assets/images/email-assistant-data-flow.svg)
+![Architecture](assets/images/email-system-architecture.svg)
 
 ## Project Structure
 
@@ -27,7 +25,7 @@ This project combines:
 │   ├── lib/                     # prompts, pipeline, DB, routing, evaluation
 │   ├── models/                  # data models
 │   ├── services/                # thread and cache services
-│   └── tools/                   # semantic search, SQL, metadata, eval tools
+│   └── tools/                   # semantic search, SQL, and eval tools
 ├── ui/
 │   └── streamlit_app.py         # Streamlit UI
 ├── scripts/
@@ -43,7 +41,7 @@ This project combines:
 
 ## Core Features
 
-- Hybrid semantic retrieval using ChromaDB, BM25, query expansion, and cross-encoder reranking
+- Hybrid semantic retrieval using ChromaDB, BM25, query expansion, and fine tuned cross-encoder reranking
 - Read-only SQL analysis over normalized email tables
 - Model-tier routing for simple, standard, and complex queries
 - Persistent chat threads and message history
@@ -86,7 +84,7 @@ This separation is especially important when querying through `relational_query_
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/tekthink-ai/email-assistant.git
+git clone git@github.com:Hrithik450/email-assistant.git
 cd email-assistant
 ```
 
@@ -137,7 +135,7 @@ uv run alembic upgrade head
 For local CLI usage, the pipeline expects a normalized JSONL file at:
 
 ```text
-src/lib/data/clean_mails.jsonl
+src/lib/data/norm_emails.jsonl
 ```
 
 To load normalized email records into PostgreSQL:
@@ -183,10 +181,6 @@ Searches email content using:
 ### `relational_query_tool`
 
 Executes read-only `SELECT` and `WITH` SQL queries against PostgreSQL with safety checks that reject write or destructive statements.
-
-### `metadata_filtering_tool`
-
-Provides metadata-based filtering utilities over email records.
 
 ## Testing
 
