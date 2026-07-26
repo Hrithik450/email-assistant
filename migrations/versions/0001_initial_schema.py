@@ -4,6 +4,7 @@ Revision ID: 0001_initial_schema
 Revises:
 Create Date: 2026-07-07
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -111,7 +112,10 @@ def upgrade() -> None:
         sa.UniqueConstraint("gmail_thread_id", name="uq_email_thread_gmail_thread_id"),
     )
     op.create_index(
-        "ix_email_thread_gmail_thread_id", "email_thread", ["gmail_thread_id"], unique=True
+        "ix_email_thread_gmail_thread_id",
+        "email_thread",
+        ["gmail_thread_id"],
+        unique=True,
     )
 
     # email — individual emails
@@ -142,9 +146,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("gmail_email_id", name="uq_email_gmail_email_id"),
     )
-    op.create_index(
-        "ix_email_gmail_email_id", "email", ["gmail_email_id"], unique=True
-    )
+    op.create_index("ix_email_gmail_email_id", "email", ["gmail_email_id"], unique=True)
 
     # recipient — TO / CC / BCC recipients of each email
     op.create_table(
