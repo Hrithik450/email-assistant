@@ -97,7 +97,7 @@ Then update `.env` with real credentials:
 ```env
 GOOGLE_API_KEY="your-google-api-key"
 OPENAI_API_KEY="your-openai-api-key"
-DATABASE_URL="postgresql://postgres:postgres@localhost:5433/re_assistant"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5433/email_assistant"
 REDIS_URL="redis://localhost:6379"
 CHROMA_API_KEY="your-chroma-api-key"
 CHROMA_TENANT="your-chroma-tenant-id"
