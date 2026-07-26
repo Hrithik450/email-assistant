@@ -5,11 +5,11 @@ These cases test the RAG pipeline's ability to retrieve and answer questions
 about the one email record loaded during development.
 
 Structure of each case:
-  query            – the user's natural language question
-  context          – what the search tool would return (simulated for unit tests)
-  answer           – a plausible agent answer
-  expected_keywords – substrings that a correct answer should contain (for fast checks)
-  label            – human-readable name
+  query            - the user's natural language question
+  context          - what the search tool would return (simulated for unit tests)
+  answer           - a plausible agent answer
+  expected_keywords - substrings that a correct answer should contain (for fast checks)
+  label            - human-readable name
 """
 
 # ---------------------------------------------------------------------------

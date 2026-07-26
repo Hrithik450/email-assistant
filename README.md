@@ -24,7 +24,7 @@ The system is a modular, layered architecture. Some layers — live email ingest
 
 The diagram is the target architecture. A few components are still scaffolding rather than fully wired:
 
-- **Streamlit app** runs but diverges from the CLI — single `gemini-2.5-pro` (no tier routing), semantic-search + metadata-filtering tools (not SQL), `app.*` imports. Treat it as a UI prototype over the same core.
+- **Streamlit app** shares the CLI's core — tiered model routing, the same semantic-search + read-only SQL tools, and `src.*` imports. A few UI-only concerns (dev-mode tool logging) surface on the server console rather than in the browser.
 - **Redis** has a working client and `CacheService` wrapper, but caching is not yet on the request path.
 - **Rate limiting** exists as a tokens-per-minute throttle in offline ingestion, not as a runtime guard.
 - **Planned:** CI/CD, container registry, cloud deployment, live inbox ingestion, and continuous-improvement feedback loops.
@@ -103,6 +103,7 @@ CHROMA_API_KEY="your-chroma-api-key"
 CHROMA_TENANT="your-chroma-tenant-id"
 CHROMA_DATABASE="your-chroma-database-name"
 EMAIL_JSONL_GDRIVE_ID="your-gdrive-file-id"
+DEV_MODE="0 or 1"
 ```
 
 ### 3. Install dependencies
@@ -130,10 +131,22 @@ uv run alembic upgrade head
 
 ### 6. Prepare data
 
-The retrieval and metadata-filtering tools read a normalized JSONL snapshot at:
+The raw data fetched from the google drive will be stored into here:
 
 ```text
 src/lib/data/raw_mails.jsonl
+```
+
+After fetching the raw data, run the normalizer to produce the normalized dataset:
+
+```bash
+uv run python src/lib/normalize.py
+```
+
+This writes normalized email records to:
+
+```text
+src/lib/data/norm_data.jsonl
 ```
 
 To load normalized email records into PostgreSQL, run the migration script, which reads from:
