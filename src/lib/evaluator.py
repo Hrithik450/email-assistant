@@ -3,23 +3,23 @@ Evaluation framework for the RE-assistant RAG system and agent.
 
 Design:
 - Single LLM call per evaluation (all metrics batched into one prompt) → minimal token use.
-- LLM-as-judge scores each dimension 1–5 and returns structured JSON.
+- LLM-as-judge scores each dimension 1-5 and returns structured JSON.
 - All metrics are data-classes so callers can aggregate, compare, or serialize them.
 - The evaluator is independently instantiable (no global state) — safe for testing.
 
 Evaluation dimensions
 ─────────────────────
 RAGMetrics
-  context_relevance  – Are the retrieved chunks relevant to the query?
-  faithfulness       – Does the answer stay grounded in the retrieved context?
-  answer_relevance   – Does the answer directly address the original query?
-  completeness       – Does the answer cover all aspects the query asked for?
+  context_relevance  - Are the retrieved chunks relevant to the query?
+  faithfulness       - Does the answer stay grounded in the retrieved context?
+  answer_relevance   - Does the answer directly address the original query?
+  completeness       - Does the answer cover all aspects the query asked for?
 
 AgentMetrics
-  response_quality   – Is the response well-formatted and professional?
-  factual_grounding  – Are stated facts traceable to retrieved data (not hallucinated)?
-  tool_appropriateness – Did the agent select the right tools for the query?
-  conciseness        – Is the response appropriately concise (not bloated)?
+  response_quality   - Is the response well-formatted and professional?
+  factual_grounding  - Are stated facts traceable to retrieved data (not hallucinated)?
+  tool_appropriateness - Did the agent select the right tools for the query?
+  conciseness        - Is the response appropriately concise (not bloated)?
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-_EVAL_MODEL = "gemini-2.5-flash-lite"   # cheapest / fastest — good enough for scoring
+_EVAL_MODEL = "gemini-2.5-flash-lite"  # cheapest / fastest — good enough for scoring
 
 _RAG_PROMPT = """\
 You are a strict evaluation judge for a Retrieval-Augmented Generation (RAG) system.
@@ -53,10 +53,10 @@ Generated Answer:
 {answer}
 
 Score these four dimensions:
-1. context_relevance  – How relevant are the retrieved chunks to answering the query?
-2. faithfulness       – Does the answer use ONLY information present in the retrieved context (no hallucination)?
-3. answer_relevance   – Does the answer directly and completely address the query?
-4. completeness       – Does the answer cover all aspects the query asked for?
+1. context_relevance  - How relevant are the retrieved chunks to answering the query?
+2. faithfulness       - Does the answer use ONLY information present in the retrieved context (no hallucination)?
+3. answer_relevance   - Does the answer directly and completely address the query?
+4. completeness       - Does the answer cover all aspects the query asked for?
 
 Reply with ONLY valid JSON (no markdown fences), example:
 {{"context_relevance": 4, "faithfulness": 5, "answer_relevance": 3, "completeness": 4, "reasoning": "one concise sentence"}}
@@ -79,10 +79,10 @@ Agent Answer:
 {expected_block}
 
 Score these four dimensions:
-1. response_quality    – Is the response well-formatted, professional, and readable?
-2. factual_grounding   – Are all stated facts grounded in retrieved data (not invented)?
-3. tool_appropriateness – Did the agent use appropriate tools (right tool, right arguments)?
-4. conciseness         – Is the answer appropriately concise without omitting key information?
+1. response_quality    - Is the response well-formatted, professional, and readable?
+2. factual_grounding   - Are all stated facts grounded in retrieved data (not invented)?
+3. tool_appropriateness - Did the agent use appropriate tools (right tool, right arguments)?
+4. conciseness         - Is the answer appropriately concise without omitting key information?
 
 Reply with ONLY valid JSON (no markdown fences), example:
 {{"response_quality": 4, "factual_grounding": 5, "tool_appropriateness": 3, "conciseness": 4, "reasoning": "one concise sentence"}}
@@ -124,6 +124,7 @@ class AgentMetrics:
 @dataclass
 class EvalReport:
     """Aggregated result from running a test suite."""
+
     total: int = 0
     passed: int = 0
     failed: int = 0
@@ -188,11 +189,12 @@ class RAGEvaluator:
 
     def __init__(self, model: str = _EVAL_MODEL):
         self._model_name = model
-        self._llm = None   # lazy-init so tests can instantiate without API keys
+        self._llm = None  # lazy-init so tests can instantiate without API keys
 
     def _get_llm(self):
         if self._llm is None:
             from langchain_google_genai import ChatGoogleGenerativeAI
+
             self._llm = ChatGoogleGenerativeAI(
                 model=self._model_name,
                 temperature=0,
@@ -214,7 +216,7 @@ class RAGEvaluator:
         """Score a single RAG query-context-answer triple."""
         prompt = _RAG_PROMPT.format(
             query=query.strip(),
-            context=context.strip()[:4000],   # guard against huge contexts
+            context=context.strip()[:4000],  # guard against huge contexts
             answer=answer.strip(),
         )
         raw = self._get_llm().invoke(prompt).content
@@ -284,14 +286,18 @@ class RAGEvaluator:
                 ok = m.passed(threshold)
                 report.passed += int(ok)
                 report.failed += int(not ok)
-                report.results.append({
-                    "label": label,
-                    "passed": ok,
-                    "metrics": m.to_dict(),
-                })
+                report.results.append(
+                    {
+                        "label": label,
+                        "passed": ok,
+                        "metrics": m.to_dict(),
+                    }
+                )
             except Exception as exc:
                 report.failed += 1
-                report.results.append({"label": label, "passed": False, "error": str(exc)})
+                report.results.append(
+                    {"label": label, "passed": False, "error": str(exc)}
+                )
             if delay_between and i < len(test_cases) - 1:
                 time.sleep(delay_between)
 
