@@ -31,3 +31,4 @@ env/
 
 clean_mails
 .aider*
+node_modules/

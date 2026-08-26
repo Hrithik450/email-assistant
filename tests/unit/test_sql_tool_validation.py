@@ -1,7 +1,7 @@
 """Unit tests for SQL tool query validation — no DB required."""
 
 import pytest
-from tools.relational_query_tool import _validate_query
+from src.tools.relational_query_tool import _validate_query
 
 
 class TestValidateQuery:

@@ -16,6 +16,7 @@ from langgraph.graph import StateGraph, START
 from src.lib.prompts import SYSTEM_PROMPT
 from src.lib.router import get_tier_and_model, MODEL_TIERS
 from src.lib.utils import render_for_display
+from src.lib.gemini_pool import get_gemini_key
 from src.services.thread_service import ThreadService
 
 from src.tools.semantic_search_tool import semantic_search_tool
@@ -32,7 +33,7 @@ def _make_llm(model_name: str) -> ChatGoogleGenerativeAI:
         model=model_name,
         temperature=0.4,
         max_retries=2,
-        google_api_key=os.environ["GOOGLE_API_KEY"],
+        google_api_key=get_gemini_key(),
     ).bind_tools(tools)
 
 
@@ -54,9 +55,9 @@ def route_model(state: AgentState) -> AgentState:
     Model routing — classify query complexity and return the appropriate Gemini model tier.
 
     Tiers (cheapest → best reasoning):
-      simple   → gemini-2.5-flash-lite   (greetings, single-fact lookups, trivial Q&A)
-      standard → gemini-2.5-flash        (email search, metadata filter, summarise 1 thread)
-      complex  → gemini-3.5-flash        (multi-step analysis, cross-thread synthesis, aggregation)
+      simple   → gemini-3.5-flash-lite   (greetings, single-fact lookups, trivial Q&A)
+      standard → gemini-3.5-flash        (email search, metadata filter, summarise 1 thread)
+      complex  → gemini-3.6-flash        (multi-step analysis, cross-thread synthesis, aggregation)
 
     Classification is purely heuristic (no extra LLM call), so it adds zero latency / tokens.
     The router errs toward upgrading: when uncertain it picks the next tier up.

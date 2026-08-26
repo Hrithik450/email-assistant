@@ -1,16 +1,3 @@
-import sys
-
-# This ensures the patch runs before chromadb is ever touched.
-IS_STREAMLIT_ENVIRONMENT = "streamlit" in sys.modules
-if IS_STREAMLIT_ENVIRONMENT:
-    print("Streamlit environment detected. Applying sqlite3 patch in load_data.py.")
-    try:
-        __import__("pysqlite3")
-        sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
-        print("Successfully patched sqlite3.")
-    except ImportError:
-        print("pysqlite3-binary not found, skipping patch.")
-
 import pytz
 import streamlit as st
 from datetime import datetime
@@ -30,9 +17,6 @@ from src.lib.utils import render_for_display
 
 from src.tools.semantic_search_tool import semantic_search_tool
 from src.tools.relational_query_tool import relational_query_tool
-
-# This will trigger the data loading and Chroma connection via st.cache_resource
-from src.lib.pipeline import df, chroma_collection
 
 # Import your database logic
 from src.services.thread_service import ThreadService

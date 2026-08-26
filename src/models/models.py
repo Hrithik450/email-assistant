@@ -9,7 +9,8 @@ from sqlalchemy import (
     BigInteger,
 )
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from pgvector.sqlalchemy import Vector
 import uuid
 
 Base = declarative_base()
@@ -214,3 +215,28 @@ class EmailLabel(Base):
     label = Column(String(100), nullable=False)
 
     email = relationship("Email", back_populates="labels")
+
+
+class EmailEmbedding(Base):
+    """Vector embedding of an email/thread summary for semantic search (pgvector).
+
+    One row per indexed document. `embedding` is a Gemini `gemini-embedding-001`
+    vector (3072-d, kept in sync with `src.lib.utils.EMBEDDING_DIM`). The HNSW
+    index over its `halfvec(3072)` cast lives in the Alembic migration — an
+    expression index can't be declared on the model, and pgvector caps the plain
+    `vector` HNSW index at 2000 dims. The `metadata` JSONB holds the source
+    document's original metadata plus a `source_id` used to make index rebuilds
+    idempotent and resumable.
+    """
+
+    __tablename__ = "email_embedding"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Best-effort link to email.gmail_email_id (used for source attribution).
+    gmail_email_id = Column(String(255), index=True)
+    content = Column(Text, nullable=False)
+    embedding = Column(Vector(3072), nullable=False)
+    meta = Column("metadata", JSONB, nullable=False, server_default="{}")
+    created_at = Column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )

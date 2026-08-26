@@ -29,13 +29,14 @@ import os
 import re
 import time
 from dataclasses import dataclass, asdict, field
+from src.lib.gemini_pool import get_gemini_key
 from typing import Optional
 
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-_EVAL_MODEL = "gemini-2.5-flash-lite"  # cheapest / fastest — good enough for scoring
+_EVAL_MODEL = "gemini-3.5-flash-lite"  # cheapest / fastest — good enough for scoring
 
 _RAG_PROMPT = """\
 You are a strict evaluation judge for a Retrieval-Augmented Generation (RAG) system.
@@ -199,7 +200,7 @@ class RAGEvaluator:
                 model=self._model_name,
                 temperature=0,
                 max_retries=2,
-                google_api_key=os.environ["GOOGLE_API_KEY"],
+                google_api_key=get_gemini_key(),
             )
         return self._llm
 

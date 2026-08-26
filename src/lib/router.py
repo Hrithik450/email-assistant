@@ -58,9 +58,9 @@ _COMPLEX_PATTERNS = [
 
 
 MODEL_TIERS: dict[str, str] = {
-    "simple": "gemini-2.5-flash-lite",
-    "standard": "gemini-2.5-flash",
-    "complex": "gemini-3.5-flash",
+    "simple": "gemini-3.5-flash-lite",
+    "standard": "gemini-3.5-flash",
+    "complex": "gemini-3.6-flash",
 }
 
 

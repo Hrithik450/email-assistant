@@ -1,0 +1,25 @@
+{
+  "name": "email-assistant",
+  "version": "1.0.0",
+  "description": "**An agentic AI system that turns an inbox into a queryable knowledge base.** Ask questions in natural language; the assistant plans, routes to the right model tier, calls specialized retrieval and SQL tools, and returns grounded, source-attributed answers.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "studio": "drizzle-kit studio",
+    "pull": "drizzle-kit pull"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.23.0",
+    "typescript": "^7.0.2"
+  }
+}

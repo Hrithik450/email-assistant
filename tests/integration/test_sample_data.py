@@ -15,7 +15,7 @@ def patch_pool(db_pool):
 
 
 def run_tool(query: str, limit: int = 50) -> str:
-    from tools.relational_query_tool import relational_query_tool
+    from src.tools.relational_query_tool import relational_query_tool
 
     return relational_query_tool.invoke({"query": query, "limit": limit})
 
