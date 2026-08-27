@@ -45,8 +45,8 @@ class ThreadService:
                 for msg in messages_to_insert:
                     curr.execute(
                         """
-                        INSERT INTO thread_messages (thread_id, role, content)
-                        VALUES (%s, %s, %s)
+                        INSERT INTO thread_messages (thread_id, role, content, created_at)
+                        VALUES (%s, %s, %s, clock_timestamp())
                         """,
                         (thread_id, msg["role"], msg["content"]),
                     )
