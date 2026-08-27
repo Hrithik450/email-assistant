@@ -110,8 +110,8 @@ def semantic_search_tool(query: str) -> str:
 
     # 1. Embed query (fast API call, no query expansion LLM latency)
     try:
-        from src.lib.gemini_pool import embed_with_pooling
-        query_embedding = embed_with_pooling(query, "RETRIEVAL_QUERY")
+        from src.lib.openai_pool import openai_embed_with_pooling
+        query_embedding = openai_embed_with_pooling(query)
     except Exception as exc:
         logger.warning("All keys exhausted for embeddings. Last error: %s", exc)
         return "Error: Vector embeddings are currently unavailable due to rate limits."
