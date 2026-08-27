@@ -5,9 +5,16 @@ import sys
 from dotenv import load_dotenv
 from psycopg_pool import ConnectionPool
 
+from urllib.parse import urlparse, urlunparse
+
 load_dotenv(override=True)
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.bsohudarhxrraxbmvjci:Mhrithik450%40@aws-1-ap-south-1.pooler.supabase.com:6543/postgres")
+_raw_url = os.environ.get("DATABASE_URL", "postgresql://postgres.bsohudarhxrraxbmvjci:Mhrithik450%40@aws-1-ap-south-1.pooler.supabase.com:6543/postgres")
+parsed = urlparse(_raw_url)
+if "sslmode=require" not in parsed.query:
+    query = parsed.query + "&sslmode=require" if parsed.query else "sslmode=require"
+    parsed = parsed._replace(query=query)
+DATABASE_URL = urlunparse(parsed)
 
 _pool: ConnectionPool | None = None
 
@@ -19,6 +26,7 @@ def create_pool() -> ConnectionPool:
         max_size=10,
         timeout=30,
         open=True,
+        kwargs={"prepare_threshold": None}
     )
 
 
