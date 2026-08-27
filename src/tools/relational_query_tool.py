@@ -19,8 +19,8 @@ _ALLOWED_START = re.compile(r"^\s*(SELECT|WITH)\b", re.IGNORECASE)
 
 _HAS_SEMICOLON = re.compile(r";")
 
-_MAX_ROWS = 10
-_DEFAULT_ROWS = 10
+_MAX_ROWS = 100
+_DEFAULT_ROWS = 50
 
 
 def _validate_query(query: str) -> str | None:

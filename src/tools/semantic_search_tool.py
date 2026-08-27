@@ -121,13 +121,13 @@ def semantic_search_tool(query: str) -> str:
 
     # 2. Run searches in parallel or sequentially (fast)
     try:
-        vector_results = _vector_search(query_embedding, n_results=50)
+        vector_results = _vector_search(query_embedding, n_results=150)
     except Exception as exc:
         logger.warning("pgvector query failed: %s", exc)
         vector_results = []
 
     try:
-        fts_results = _fts_search(query, n_results=50)
+        fts_results = _fts_search(query, n_results=150)
     except Exception as exc:
         logger.warning("FTS query failed: %s", exc)
         fts_results = []
@@ -150,17 +150,18 @@ def semantic_search_tool(query: str) -> str:
     if not candidate_map:
         return "No relevant documents found."
 
-    # 4. Limit Cross-Encoder to top 10 to drastically reduce CPU latency
+    # 4. Limit Cross-Encoder to top 100 to increase recall
     top_candidates = sorted(
         candidate_map.items(), key=lambda x: x[1]["score"], reverse=True
-    )[:20]
+    )[:100]
 
     pairs = [[query, text] for text, _ in top_candidates]
     cross_scores = _get_cross_encoder().predict(pairs)
 
+    # Return top 50 highly relevant chunks to the LLM context
     final_ranked = sorted(
         zip(cross_scores, top_candidates), key=lambda x: x[0], reverse=True
-    )[:20]
+    )[:50]
 
     sources = _fetch_email_sources([info["email_id"] for _, (_, info) in final_ranked])
 
