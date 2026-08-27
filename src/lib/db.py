@@ -7,7 +7,7 @@ from psycopg_pool import ConnectionPool
 
 load_dotenv(override=True)
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.bsohudarhxrraxbmvjci:Mhrithik450%40@aws-1-ap-south-1.pooler.supabase.com:6543/postgres")
 
 _pool: ConnectionPool | None = None
 
