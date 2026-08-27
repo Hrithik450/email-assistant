@@ -46,10 +46,10 @@ def get_pool() -> ConnectionPool:
             import streamlit as st
 
             @st.cache_resource
-            def _st_pool():
+            def _st_pool_v2():
                 return create_pool()
 
-            _pool = _st_pool()
+            _pool = _st_pool_v2()
         else:
             _pool = create_pool()
         atexit.register(_shutdown_pool)
