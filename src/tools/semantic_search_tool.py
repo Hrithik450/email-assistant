@@ -13,14 +13,17 @@ logger = get_logger(__name__)
 
 _cross_encoder: CrossEncoder | None = None
 
+
 def _get_cross_encoder() -> CrossEncoder:
     global _cross_encoder
     if _cross_encoder is None:
         _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
     return _cross_encoder
 
+
 def _to_vector_literal(embedding: list[float]) -> str:
     return "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
+
 
 def _fts_search(query: str, n_results: int = 50) -> list[tuple[str, str | None, float]]:
     sql = """
@@ -34,10 +37,15 @@ def _fts_search(query: str, n_results: int = 50) -> list[tuple[str, str | None, 
     with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, (query, query, query, n_results))
-            results = [(content, eid, float(score)) for content, eid, score in cur.fetchall()]
+            results = [
+                (content, eid, float(score)) for content, eid, score in cur.fetchall()
+            ]
     return results
 
-def _vector_search(query_embedding: list[float], n_results: int = 50) -> list[tuple[str, str | None, float]]:
+
+def _vector_search(
+    query_embedding: list[float], n_results: int = 50
+) -> list[tuple[str, str | None, float]]:
     sql = f"""
         SELECT content, gmail_email_id,
                1 - (embedding::halfvec({EMBEDDING_DIM}) <=> %s::halfvec({EMBEDDING_DIM})) AS sim
@@ -50,8 +58,11 @@ def _vector_search(query_embedding: list[float], n_results: int = 50) -> list[tu
         with conn.cursor() as cur:
             literal = _to_vector_literal(query_embedding)
             cur.execute(sql, (literal, literal, n_results))
-            results = [(content, eid, float(sim)) for content, eid, sim in cur.fetchall()]
+            results = [
+                (content, eid, float(sim)) for content, eid, sim in cur.fetchall()
+            ]
     return results
+
 
 def _fetch_email_sources(email_ids: list[str]) -> dict[str, dict]:
     ids = [e for e in dict.fromkeys(email_ids) if e]
@@ -87,6 +98,7 @@ def _fetch_email_sources(email_ids: list[str]) -> dict[str, dict]:
         }
     return result
 
+
 @tool("semantic_search_tool", parse_docstring=True)
 def semantic_search_tool(query: str) -> str:
     """Performs optimized Hybrid Search (FTS + Vector) with Cross-Encoding re-ranking.
@@ -97,25 +109,11 @@ def semantic_search_tool(query: str) -> str:
     log_tool_call("semantic_search_tool", query)
 
     # 1. Embed query (fast API call, no query expansion LLM latency)
-    query_embedding = None
-    last_err = None
-    for _ in range(10):
-        key = get_gemini_key("embedding")
-        try:
-            query_embedding = get_embeddings("RETRIEVAL_QUERY", key=key).embed_query(query)
-            break
-        except Exception as exc:
-            err_str = str(exc)
-            if any(e in err_str for e in ["429", "503", "401", "403", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "UNAUTHENTICATED", "PERMISSION_DENIED", "NOT_FOUND"]):
-                logger.warning("Gemini key exhausted for embeddings, marking 60s cooldown...")
-                mark_key_exhausted(key, cooldown_secs=60)
-                last_err = exc
-                continue
-            logger.warning("Embedding failed: %s", exc)
-            return "Error: could not generate query embeddings."
-            
-    if not query_embedding:
-        logger.warning("All keys exhausted for embeddings. Last error: %s", last_err)
+    try:
+        from src.lib.gemini_pool import embed_with_pooling
+        query_embedding = embed_with_pooling(query, "RETRIEVAL_QUERY")
+    except Exception as exc:
+        logger.warning("All keys exhausted for embeddings. Last error: %s", exc)
         return "Error: Vector embeddings are currently unavailable due to rate limits."
 
     # 2. Run searches in parallel or sequentially (fast)
@@ -133,20 +131,26 @@ def semantic_search_tool(query: str) -> str:
 
     # 3. Combine scores
     candidate_map = {}
-    
+
     for fts_doc, fts_eid, fts_score in fts_results:
         # MASSIVE BOOST for high-priority documents to ensure they reach the CrossEncoder
-        boost = 1000 if "[ORGANIZATION BRIEFING DOCUMENT - HIGH PRIORITY]" in fts_doc else 0
+        boost = (
+            1000 if "[ORGANIZATION BRIEFING DOCUMENT - HIGH PRIORITY]" in fts_doc else 0
+        )
         candidate_map[fts_doc] = {
             "email_id": fts_eid,
             "score": candidate_map.get(fts_doc, {}).get("score", 0) + fts_score + boost,
         }
 
     for v_doc, v_eid, v_sim in vector_results:
-        boost = 1000 if "[ORGANIZATION BRIEFING DOCUMENT - HIGH PRIORITY]" in v_doc else 0
+        boost = (
+            1000 if "[ORGANIZATION BRIEFING DOCUMENT - HIGH PRIORITY]" in v_doc else 0
+        )
         candidate_map[v_doc] = {
             "email_id": v_eid,
-            "score": candidate_map.get(v_doc, {}).get("score", 0) + (v_sim * 10) + boost,
+            "score": candidate_map.get(v_doc, {}).get("score", 0)
+            + (v_sim * 10)
+            + boost,
         }
 
     if not candidate_map:
