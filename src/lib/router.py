@@ -59,8 +59,8 @@ _COMPLEX_PATTERNS = [
 
 MODEL_TIERS: dict[str, str] = {
     "simple": "gpt-4o-mini",
-    "standard": "gpt-4o-mini",
-    "complex": "gpt-4o",
+    "standard": "gpt-4o",
+    "complex": "o1-preview",
 }
 
 
