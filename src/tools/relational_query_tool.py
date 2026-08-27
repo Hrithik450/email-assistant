@@ -53,14 +53,8 @@ def relational_query_tool(query: str, limit: int = _DEFAULT_ROWS) -> str:
     """
     Execute a read-only SQL SELECT query on the email database.
 
-    SCHEMA (PostgreSQL) — two separate user domains, never mix them:
+    SCHEMA (PostgreSQL) — these tables contain all company email data:
 
-    APPLICATION DOMAIN (authentication & chat):
-    "user"          (id uuid PK, username varchar UNIQUE, email varchar UNIQUE, role varchar, created_at timestamptz)
-    thread          (id uuid PK, user_id uuid FK→"user", title varchar, created_at timestamptz)
-    thread_messages (id uuid PK, thread_id uuid FK→thread, role varchar[user|assistant], content text, created_at timestamptz)
-
-    EMAIL DOMAIN (people extracted from imported emails only):
     email_user    (id uuid PK, display_name varchar, email varchar UNIQUE, domain varchar, created_at timestamptz)
     email_thread  (id uuid PK, gmail_thread_id varchar UNIQUE, subject text, first_email_at timestamptz, last_email_at timestamptz, message_count int, created_at timestamptz)
     email         (id uuid PK, gmail_email_id varchar UNIQUE, thread_id uuid FK→email_thread, sender_id uuid FK→email_user, subject text, snippet text, body text, sent_at timestamptz, created_at timestamptz)
@@ -71,8 +65,7 @@ def relational_query_tool(query: str, limit: int = _DEFAULT_ROWS) -> str:
     RELATIONSHIPS:
     - email.sender_id → email_user.id   (who sent the email)
     - recipient.person_id → email_user.id  (who received it; filter by recipient_type)
-    - email.thread_id → email_thread.id (Gmail thread grouping)
-    - thread.user_id → "user".id        (chat thread owner — app user, not email_user)
+    - email.thread_id → email_thread.id (Gmail thread grouping, often used as 'projects' or topics)
 
     TIPS:
     - Quote "user" in double-quotes (SQL reserved word). email_user needs no quoting.
