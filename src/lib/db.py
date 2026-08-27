@@ -34,6 +34,7 @@ def create_pool() -> ConnectionPool:
         max_size=10,
         timeout=30,
         open=True,
+        kwargs={"prepare_threshold": None}
     )
 
 
