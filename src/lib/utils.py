@@ -6,16 +6,13 @@ from rapidfuzz import fuzz, process
 import polars as pl
 import json
 import time
-import os
 import re
 
-BASE_DIR = os.path.dirname(__file__)
-
-CHROMA_COLLECTION_NAME = "organization_data"
-
-EMAIL_JSON_PATH = os.path.join(BASE_DIR, "data", "raw_mails.jsonl")
-
-EMBEDDING_MODEL_NAME = "text-embedding-3-large"
+# Gemini embeddings — single source of truth for model + vector size.
+# gemini-embedding-001 outputs 3072-d vectors, already normalized at full size,
+# so cosine distance can be used directly for retrieval.
+EMBEDDING_MODEL_NAME = "models/gemini-embedding-001"
+EMBEDDING_DIM = 3072
 
 _ID_TAG_RE = re.compile(r"\s*<(id|tid)>.*?</\1>", re.IGNORECASE | re.DOTALL)
 _SOURCES_SPLIT_RE = re.compile(r"(?im)^[ \t>*-]*sources\s*:?[ \t]*$|\bsources\s*:")

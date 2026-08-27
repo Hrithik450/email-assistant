@@ -10,12 +10,12 @@ from typing_extensions import TypedDict
 
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, START
 
 from src.lib.prompts import SYSTEM_PROMPT
 from src.lib.router import get_tier_and_model, MODEL_TIERS
 from src.lib.utils import render_for_display
+from src.lib.gemini_pool import get_llm, mark_key_exhausted
 from src.services.thread_service import ThreadService
 
 from src.tools.semantic_search_tool import semantic_search_tool
@@ -27,13 +27,7 @@ console = Console()
 IST = pytz.timezone("Asia/Kolkata")
 
 
-def _make_llm(model_name: str) -> ChatGoogleGenerativeAI:
-    return ChatGoogleGenerativeAI(
-        model=model_name,
-        temperature=0.4,
-        max_retries=2,
-        google_api_key=os.environ["GOOGLE_API_KEY"],
-    ).bind_tools(tools)
+
 
 
 def _today_date() -> str:
@@ -54,9 +48,9 @@ def route_model(state: AgentState) -> AgentState:
     Model routing — classify query complexity and return the appropriate Gemini model tier.
 
     Tiers (cheapest → best reasoning):
-      simple   → gemini-2.5-flash-lite   (greetings, single-fact lookups, trivial Q&A)
-      standard → gemini-2.5-flash        (email search, metadata filter, summarise 1 thread)
-      complex  → gemini-3.5-flash        (multi-step analysis, cross-thread synthesis, aggregation)
+      simple   → gemini-3.5-flash-lite   (greetings, single-fact lookups, trivial Q&A)
+      standard → gemini-3.5-flash        (email search, metadata filter, summarise 1 thread)
+      complex  → gemini-3.6-flash        (multi-step analysis, cross-thread synthesis, aggregation)
 
     Classification is purely heuristic (no extra LLM call), so it adds zero latency / tokens.
     The router errs toward upgrading: when uncertain it picks the next tier up.
@@ -78,10 +72,23 @@ def route_model(state: AgentState) -> AgentState:
 def call_model(state: AgentState):
     tier = state.get("model_tier", "standard")
     model_name = MODEL_TIERS.get(tier, MODEL_TIERS["standard"])
-    llm = _make_llm(model_name)
-    response = llm.invoke(state["messages"])
-    return {"messages": [response]}
-
+    
+    last_err = None
+    for attempt in range(2):
+        try:
+            llm = get_llm(model_name, tools)
+            response = llm.invoke(state["messages"])
+            return {"messages": [response]}
+        except Exception as e:
+            err_str = str(e)
+            if any(x in err_str for x in ["429", "503", "401", "403", "insufficient_quota"]):
+                print(f"LLM key exhausted (attempt {attempt+1}), cooldown 60s...")
+                is_native = "aicredits" not in err_str
+                mark_key_exhausted(is_native=is_native, cooldown_secs=60)
+                last_err = e
+                continue
+            raise e
+    raise RuntimeError(f"All LLM keys exhausted. Last error: {last_err}")
 
 def build_agent_graph():
     builder = StateGraph(AgentState)

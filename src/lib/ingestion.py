@@ -1,7 +1,10 @@
+import os
 import time
 import tiktoken
+from src.lib.db import get_db
+from src.lib.gemini_pool import get_gemini_key
 from typing import List, Tuple
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 
@@ -18,7 +21,13 @@ Summarize this,
 """
 prompt_perspective = ChatPromptTemplate.from_template(template)
 
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_completion_tokens=512)
+llm = ChatGoogleGenerativeAI(
+    model="gemini-3.5-flash-lite",
+    temperature=0,
+    max_retries=2,
+    max_output_tokens=512,
+    google_api_key=get_gemini_key(),
+)
 
 encoding_model = tiktoken.get_encoding("cl100k_base")
 

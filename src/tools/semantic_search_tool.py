@@ -1,55 +1,17 @@
 import os
-
 import numpy as np
 from langchain.tools import tool
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import OpenAIEmbeddings
-from rank_bm25 import BM25Okapi
 from sentence_transformers import CrossEncoder
 
+from src.lib.db import pool
+from src.lib.gemini_pool import get_gemini_key, mark_key_exhausted
+from src.lib.embeddings import get_embeddings
 from src.lib.logger import get_logger, log_tool_call
-from src.lib.utils import EMBEDDING_MODEL_NAME
+from src.lib.utils import EMBEDDING_DIM
 
 logger = get_logger(__name__)
 
-# ---------------------------------------------------------------------------
-# Lazy initialization — all heavy resources deferred to first use
-# ---------------------------------------------------------------------------
-
-_search_state: dict | None = None
 _cross_encoder: CrossEncoder | None = None
-_generate_queries = None
-_embedding_model = None
-
-
-def _init_search():
-    global _search_state
-    if _search_state is not None:
-        return _search_state
-
-    from src.lib.pipeline import chroma_collection
-
-    if chroma_collection is None:
-        _search_state = {"ready": False}
-        return _search_state
-
-    all_chroma = chroma_collection.get(include=["documents", "metadatas"])
-    documents = all_chroma["documents"]
-    metadatas = all_chroma["metadatas"]
-    tokenized_docs = [doc.lower().split() for doc in documents]
-    bm25 = BM25Okapi(tokenized_docs)
-
-    _search_state = {
-        "ready": True,
-        "collection": chroma_collection,
-        "documents": documents,
-        "metadatas": metadatas,
-        "bm25": bm25,
-    }
-    return _search_state
-
 
 def _get_cross_encoder() -> CrossEncoder:
     global _cross_encoder
@@ -57,56 +19,47 @@ def _get_cross_encoder() -> CrossEncoder:
         _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
     return _cross_encoder
 
+def _to_vector_literal(embedding: list[float]) -> str:
+    return "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
 
-def _get_embedding_model():
-    global _embedding_model
-    if _embedding_model is None:
-        _embedding_model = OpenAIEmbeddings(
-            model=EMBEDDING_MODEL_NAME, api_key=os.environ.get("OPENAI_API_KEY", "")
-        )
-    return _embedding_model
+def _fts_search(query: str, n_results: int = 50) -> list[tuple[str, str | None, float]]:
+    sql = """
+        SELECT content, gmail_email_id,
+               ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', %s)) AS bm25_score
+        FROM email_embedding
+        WHERE to_tsvector('english', content) @@ websearch_to_tsquery('english', %s)
+        ORDER BY bm25_score DESC
+        LIMIT %s
+    """
+    results = []
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (query, query, n_results))
+            results = [(content, eid, float(score)) for content, eid, score in cur.fetchall()]
+    return results
 
-
-def _get_query_expander():
-    global _generate_queries
-    if _generate_queries is not None:
-        return _generate_queries
-
-    template = """You are an AI language model assistant. Your task is to generate 3
-different versions of the given user question to retrieve relevant documents from a vector
-database. By generating multiple perspectives on the user question, your goal is to help
-the user overcome some of the limitations of the distance-based similarity search.
-Provide these alternative questions separated by newlines. Original question: {question}"""
-
-    prompt_perspectives = ChatPromptTemplate.from_template(template)
-
-    _generate_queries = (
-        prompt_perspectives
-        | ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash-lite",
-            temperature=0,
-            max_retries=2,
-            google_api_key=os.environ.get("GOOGLE_API_KEY", ""),
-        )
-        | StrOutputParser()
-        | (lambda x: x.split("\n"))
-    )
-    return _generate_queries
-
+def _vector_search(query_embedding: list[float], n_results: int = 50) -> list[tuple[str, str | None, float]]:
+    sql = f"""
+        SELECT content, gmail_email_id,
+               1 - (embedding::halfvec({EMBEDDING_DIM}) <=> %s::halfvec({EMBEDDING_DIM})) AS sim
+        FROM email_embedding
+        ORDER BY embedding::halfvec({EMBEDDING_DIM}) <=> %s::halfvec({EMBEDDING_DIM})
+        LIMIT %s
+    """
+    results = []
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            literal = _to_vector_literal(query_embedding)
+            cur.execute(sql, (literal, literal, n_results))
+            results = [(content, eid, float(sim)) for content, eid, sim in cur.fetchall()]
+    return results
 
 def _fetch_email_sources(email_ids: list[str]) -> dict[str, dict]:
-    """Fetch sender / subject / date for gmail email ids from Postgres.
-
-    Returns a map keyed by gmail_email_id. Missing ids are simply absent.
-    Never raises — attribution is best-effort and must not break search.
-    """
     ids = [e for e in dict.fromkeys(email_ids) if e]
     if not ids:
         return {}
 
     try:
-        from src.lib.db import pool
-
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -135,80 +88,69 @@ def _fetch_email_sources(email_ids: list[str]) -> dict[str, dict]:
         }
     return result
 
-
 @tool("semantic_search_tool", parse_docstring=True)
 def semantic_search_tool(query: str) -> str:
-    """
-    Performs optimized Hybrid Search (BM25 + Vector) with Cross-Encoding re-ranking.
+    """Performs optimized Hybrid Search (FTS + Vector) with Cross-Encoding re-ranking.
 
     Args:
-        query (str): The natural language query.
+        query: The natural language query.
     """
     log_tool_call("semantic_search_tool", query)
-    state = _init_search()
-    if not state["ready"]:
-        return "Error: Search infrastructure is unavailable."
 
-    collection = state["collection"]
-    documents = state["documents"]
-    metadatas = state["metadatas"]
-    bm25 = state["bm25"]
-
-    try:
-        expanded_queries = _get_query_expander().invoke({"question": query})
-    except Exception as exc:
-        logger.warning("Query expansion failed, using original query: %s", exc)
-        expanded_queries = [query]
-
-    try:
-        query_embeddings = _get_embedding_model().embed_documents(expanded_queries)
-    except Exception as exc:
-        logger.warning("Embedding failed: %s", exc)
-        return "Error: could not generate query embeddings."
-
-    try:
-        search_results = collection.query(
-            query_embeddings=query_embeddings, n_results=15
-        )
-    except Exception as exc:
-        logger.warning("ChromaDB query failed: %s", exc)
-        return "Error: vector search failed."
-
-    candidate_map = {}
-
-    for i, q in enumerate(expanded_queries):
-        q_tokens = q.lower().split()
-        bm25_scores = bm25.get_scores(q_tokens)
-        top_bm_indices = np.argsort(bm25_scores)[-20:]
-
-        for idx in top_bm_indices:
-            score = bm25_scores[idx]
-            if score <= 0:
+    # 1. Embed query (fast API call, no query expansion LLM latency)
+    query_embedding = None
+    last_err = None
+    for _ in range(10):
+        key = get_gemini_key("embedding")
+        try:
+            query_embedding = get_embeddings("RETRIEVAL_QUERY", key=key).embed_query(query)
+            break
+        except Exception as exc:
+            err_str = str(exc)
+            if any(e in err_str for e in ["429", "503", "401", "403", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "UNAUTHENTICATED", "PERMISSION_DENIED", "NOT_FOUND"]):
+                logger.warning("Gemini key exhausted for embeddings, marking 60s cooldown...")
+                mark_key_exhausted(key, cooldown_secs=60)
+                last_err = exc
                 continue
-            doc = documents[idx]
-            meta = metadatas[idx] or {}
-            eid = meta.get("email_id")
-            candidate_map[doc] = {
-                "email_id": eid,
-                "score": candidate_map.get(doc, {}).get("score", 0) + score,
-            }
+            logger.warning("Embedding failed: %s", exc)
+            return "Error: could not generate query embeddings."
+            
+    if not query_embedding:
+        logger.warning("All keys exhausted for embeddings. Last error: %s", last_err)
+        return "Error: Vector embeddings are currently unavailable due to rate limits."
 
-        v_docs = search_results["documents"][i]
-        v_metas = search_results["metadatas"][i]
-        v_dists = search_results["distances"][i]
+    # 2. Run searches in parallel or sequentially (fast)
+    try:
+        vector_results = _vector_search(query_embedding, n_results=50)
+    except Exception as exc:
+        logger.warning("pgvector query failed: %s", exc)
+        vector_results = []
 
-        for v_doc, v_meta, v_dist in zip(v_docs, v_metas, v_dists):
-            sim_score = 1.0 / (1.0 + v_dist)
-            eid = v_meta.get("email_id") if v_meta else None
-            candidate_map[v_doc] = {
-                "email_id": eid,
-                "score": candidate_map.get(v_doc, {}).get("score", 0)
-                + (sim_score * 10),
-            }
+    try:
+        fts_results = _fts_search(query, n_results=50)
+    except Exception as exc:
+        logger.warning("FTS query failed: %s", exc)
+        fts_results = []
+
+    # 3. Combine scores
+    candidate_map = {}
+    
+    for fts_doc, fts_eid, fts_score in fts_results:
+        candidate_map[fts_doc] = {
+            "email_id": fts_eid,
+            "score": candidate_map.get(fts_doc, {}).get("score", 0) + fts_score,
+        }
+
+    for v_doc, v_eid, v_sim in vector_results:
+        candidate_map[v_doc] = {
+            "email_id": v_eid,
+            "score": candidate_map.get(v_doc, {}).get("score", 0) + (v_sim * 10),
+        }
 
     if not candidate_map:
         return "No relevant documents found."
 
+    # 4. Limit Cross-Encoder to top 10 to drastically reduce CPU latency
     top_candidates = sorted(
         candidate_map.items(), key=lambda x: x[1]["score"], reverse=True
     )[:20]
@@ -218,15 +160,12 @@ def semantic_search_tool(query: str) -> str:
 
     final_ranked = sorted(
         zip(cross_scores, top_candidates), key=lambda x: x[0], reverse=True
-    )
+    )[:20]
 
-    ranked_top = final_ranked[:10]
-    sources = _fetch_email_sources(
-        [info["email_id"] for _, (_, info) in ranked_top]
-    )
+    sources = _fetch_email_sources([info["email_id"] for _, (_, info) in final_ranked])
 
     output = []
-    for rel_score, (text, info) in ranked_top:
+    for rel_score, (text, info) in final_ranked:
         eid = info["email_id"]
         src = sources.get(eid)
         if src:
