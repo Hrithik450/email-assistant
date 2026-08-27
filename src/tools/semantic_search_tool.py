@@ -158,10 +158,10 @@ def semantic_search_tool(query: str) -> str:
     pairs = [[query, text] for text, _ in top_candidates]
     cross_scores = _get_cross_encoder().predict(pairs)
 
-    # Return top 50 highly relevant chunks to the LLM context
+    # Return top 20 highly relevant chunks to the LLM context
     final_ranked = sorted(
         zip(cross_scores, top_candidates), key=lambda x: x[0], reverse=True
-    )[:50]
+    )[:20]
 
     sources = _fetch_email_sources([info["email_id"] for _, (_, info) in final_ranked])
 
