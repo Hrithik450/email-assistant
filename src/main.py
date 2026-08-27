@@ -15,7 +15,7 @@ from langgraph.graph import StateGraph, START
 from src.lib.prompts import SYSTEM_PROMPT
 from src.lib.router import get_tier_and_model, MODEL_TIERS
 from src.lib.utils import render_for_display
-from src.lib.gemini_pool import get_llm, mark_key_exhausted
+
 from src.services.thread_service import ThreadService
 
 from src.tools.semantic_search_tool import semantic_search_tool
@@ -25,9 +25,6 @@ load_dotenv(override=True)
 
 console = Console()
 IST = pytz.timezone("Asia/Kolkata")
-
-
-
 
 
 def _today_date() -> str:
@@ -69,26 +66,15 @@ def route_model(state: AgentState) -> AgentState:
     return {"model_tier": tier}
 
 
+from src.lib.openai_pool import invoke_with_pooling
+
 def call_model(state: AgentState):
     tier = state.get("model_tier", "standard")
     model_name = MODEL_TIERS.get(tier, MODEL_TIERS["standard"])
-    
-    last_err = None
-    for attempt in range(2):
-        try:
-            llm = get_llm(model_name, tools)
-            response = llm.invoke(state["messages"])
-            return {"messages": [response]}
-        except Exception as e:
-            err_str = str(e)
-            if any(x in err_str for x in ["429", "503", "401", "403", "insufficient_quota"]):
-                print(f"LLM key exhausted (attempt {attempt+1}), cooldown 60s...")
-                is_native = "aicredits" not in err_str
-                mark_key_exhausted(is_native=is_native, cooldown_secs=60)
-                last_err = e
-                continue
-            raise e
-    raise RuntimeError(f"All LLM keys exhausted. Last error: {last_err}")
+
+    response = invoke_with_pooling(model_name, state["messages"], tools)
+    return {"messages": [response]}
+
 
 def build_agent_graph():
     builder = StateGraph(AgentState)
