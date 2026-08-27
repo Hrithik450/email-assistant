@@ -29,6 +29,7 @@ TOOL USAGE
   - the request is exploratory
   - metadata is missing
   - the user asks conceptual questions about company content
+  - the user asks "Who is [person]?" or asks about someone's role, identity, or responsibilities
 
 RETRIEVAL BEHAVIOR
 - Rewrite the user's intent internally before retrieval.
