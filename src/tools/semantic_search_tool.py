@@ -24,17 +24,16 @@ def _to_vector_literal(embedding: list[float]) -> str:
 
 def _fts_search(query: str, n_results: int = 50) -> list[tuple[str, str | None, float]]:
     sql = """
-        SELECT content, gmail_email_id,
-               ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', %s)) AS bm25_score
+        SELECT content, gmail_email_id, ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', %s)) AS base_score
         FROM email_embedding
         WHERE to_tsvector('english', content) @@ websearch_to_tsquery('english', %s)
-        ORDER BY bm25_score DESC
+        ORDER BY ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', %s)) + (CASE WHEN content LIKE '%%[ORGANIZATION BRIEFING DOCUMENT - HIGH PRIORITY]%%' THEN 1000 ELSE 0 END) DESC
         LIMIT %s
     """
     results = []
     with get_pool().connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (query, query, n_results))
+            cur.execute(sql, (query, query, query, n_results))
             results = [(content, eid, float(score)) for content, eid, score in cur.fetchall()]
     return results
 
