@@ -136,15 +136,18 @@ def semantic_search_tool(query: str) -> str:
     candidate_map = {}
     
     for fts_doc, fts_eid, fts_score in fts_results:
+        # MASSIVE BOOST for high-priority documents to ensure they reach the CrossEncoder
+        boost = 1000 if "[ORGANIZATION BRIEFING DOCUMENT - HIGH PRIORITY]" in fts_doc else 0
         candidate_map[fts_doc] = {
             "email_id": fts_eid,
-            "score": candidate_map.get(fts_doc, {}).get("score", 0) + fts_score,
+            "score": candidate_map.get(fts_doc, {}).get("score", 0) + fts_score + boost,
         }
 
     for v_doc, v_eid, v_sim in vector_results:
+        boost = 1000 if "[ORGANIZATION BRIEFING DOCUMENT - HIGH PRIORITY]" in v_doc else 0
         candidate_map[v_doc] = {
             "email_id": v_eid,
-            "score": candidate_map.get(v_doc, {}).get("score", 0) + (v_sim * 10),
+            "score": candidate_map.get(v_doc, {}).get("score", 0) + (v_sim * 10) + boost,
         }
 
     if not candidate_map:
