@@ -3,7 +3,7 @@ import numpy as np
 from langchain.tools import tool
 from sentence_transformers import CrossEncoder
 
-from src.lib.db import pool
+from src.lib.db import get_pool
 from src.lib.gemini_pool import get_gemini_key, mark_key_exhausted
 from src.lib.embeddings import get_embeddings
 from src.lib.logger import get_logger, log_tool_call
@@ -32,7 +32,7 @@ def _fts_search(query: str, n_results: int = 50) -> list[tuple[str, str | None, 
         LIMIT %s
     """
     results = []
-    with pool.connection() as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, (query, query, n_results))
             results = [(content, eid, float(score)) for content, eid, score in cur.fetchall()]
@@ -47,7 +47,7 @@ def _vector_search(query_embedding: list[float], n_results: int = 50) -> list[tu
         LIMIT %s
     """
     results = []
-    with pool.connection() as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             literal = _to_vector_literal(query_embedding)
             cur.execute(sql, (literal, literal, n_results))
@@ -60,7 +60,7 @@ def _fetch_email_sources(email_ids: list[str]) -> dict[str, dict]:
         return {}
 
     try:
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """

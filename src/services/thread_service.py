@@ -1,11 +1,11 @@
-from src.lib.db import pool
+from src.lib.db import get_pool
 
 
 class ThreadService:
 
     @staticmethod
     def create_new_thread(user_id, title):
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as curr:
                 curr.execute(
                     """
@@ -40,7 +40,7 @@ class ThreadService:
         else:
             messages_to_insert = list(new_messages)
 
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as curr:
                 for msg in messages_to_insert:
                     curr.execute(
@@ -55,7 +55,7 @@ class ThreadService:
     @staticmethod
     def rename_thread(thread_id, new_title):
         """Renames a specific thread."""
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as curr:
                 curr.execute(
                     """
@@ -67,7 +67,7 @@ class ThreadService:
 
     @staticmethod
     def get_threads(user_id):
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as curr:
                 curr.execute(
                     """
@@ -95,7 +95,7 @@ class ThreadService:
     @staticmethod
     def get_last_thread(user_id):
 
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as curr:
                 curr.execute(
                     """
@@ -115,7 +115,7 @@ class ThreadService:
     @staticmethod
     def get_thread_messages(thread_id):
 
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as curr:
                 curr.execute(
                     """
@@ -144,7 +144,7 @@ class ThreadService:
     @staticmethod
     def get_recent_thread_messages(thread_id):
 
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as curr:
                 curr.execute(
                     """
@@ -171,7 +171,7 @@ class ThreadService:
     def delete_thread(thread_id):
         """Deletes a specific thread and all its messages (via CASCADE)."""
 
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as curr:
                 curr.execute(
                     """

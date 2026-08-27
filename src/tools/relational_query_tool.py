@@ -1,7 +1,7 @@
 import re
 from langchain.tools import tool
 
-from src.lib.db import pool
+from src.lib.db import get_pool
 from src.lib.logger import get_logger, log_tool_call
 
 logger = get_logger(__name__)
@@ -87,7 +87,7 @@ def relational_query_tool(query: str, limit: int = _DEFAULT_ROWS) -> str:
     safe_query = f"SELECT * FROM ({query.rstrip('; \n')}) _q LIMIT {limit}"
 
     try:
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             with conn.transaction():
                 conn.execute("SET TRANSACTION READ ONLY")
                 with conn.cursor() as cur:

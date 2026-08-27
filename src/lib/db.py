@@ -13,7 +13,7 @@ load_dotenv(override=True)
 # Try direct connection string provided by user, but default to IPv4 pooler
 _raw_url = os.environ.get("DATABASE_URL", "postgresql://postgres.bsohudarhxrraxbmvjci:Mhrithik450%40@aws-1-ap-south-1.pooler.supabase.com:6543/postgres")
 parsed = urlparse(_raw_url)
-if "sslmode=require" not in parsed.query:
+if "sslmode=require" not in parsed.query and "localhost" not in parsed.netloc:
     query = parsed.query + "&sslmode=require" if parsed.query else "sslmode=require"
     parsed = parsed._replace(query=query)
 DATABASE_URL = urlunparse(parsed)
@@ -63,7 +63,4 @@ def _shutdown_pool():
         _pool = None
 
 
-def __getattr__(name: str):
-    if name == "pool":
-        return get_pool()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
