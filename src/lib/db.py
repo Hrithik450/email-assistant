@@ -34,7 +34,7 @@ def create_pool() -> ConnectionPool:
         max_size=10,
         timeout=30,
         open=True,
-        kwargs={"prepare_threshold": None}
+        kwargs={"prepare_threshold": None, "options": "-c search_path=public"}
     )
 
 
@@ -46,10 +46,10 @@ def get_pool() -> ConnectionPool:
             import streamlit as st
 
             @st.cache_resource
-            def _st_pool_v2():
+            def _st_pool_v3():
                 return create_pool()
 
-            _pool = _st_pool_v2()
+            _pool = _st_pool_v3()
         else:
             _pool = create_pool()
         atexit.register(_shutdown_pool)
