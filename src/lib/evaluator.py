@@ -29,7 +29,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, asdict, field
-from src.lib.gemini_pool import get_gemini_key
+from src.lib.embeddings import get_gemini_key
 from typing import Optional
 
 from dotenv import load_dotenv

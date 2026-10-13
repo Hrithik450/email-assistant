@@ -5,7 +5,7 @@ from sentence_transformers import CrossEncoder
 
 from src.lib.logger import get_logger, log_tool_call
 from src.lib.pipeline import get_chroma_collection
-from src.lib.gemini_pool import embed_with_pooling
+from src.lib.embeddings import embed_query
 from src.lib.utils import CHROMA_COLLECTION_NAME
 
 logger = get_logger(__name__)
@@ -73,7 +73,7 @@ def semantic_search_tool(query: str) -> str:
 
     # 2. Generate 3072-dimension query embedding using Gemini
     try:
-        query_embedding = embed_with_pooling(query, task_type="RETRIEVAL_QUERY")
+        query_embedding = embed_query(query, task_type="RETRIEVAL_QUERY")
     except Exception as exc:
         logger.warning("Gemini embedding failed: %s", exc)
         return "Error: Could not generate vector embeddings for query."

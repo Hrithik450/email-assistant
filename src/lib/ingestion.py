@@ -2,7 +2,7 @@ import os
 import time
 import tiktoken
 from src.lib.db import get_db
-from src.lib.gemini_pool import get_gemini_key
+from src.lib.embeddings import get_gemini_key
 from typing import List, Tuple
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
