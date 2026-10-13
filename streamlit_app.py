@@ -65,33 +65,22 @@ def initialize_agent():
     def call_model(state: AgentState) -> AgentState:
         """Send messages to the tier-appropriate model and return its response."""
         tier = state.get("model_tier", "standard")
-        model_name = MODEL_TIERS.get(tier, MODEL_TIERS["standard"])
-        
-        from src.lib.gemini_pool import get_llm, mark_key_exhausted
-        
-        last_err = None
-        for attempt in range(2):
-            is_native = (attempt == 0) # Try native first, then fallback conceptually
-            try:
-                llm = get_llm(model_name, tools)
-                # Check which key was used based on the base_url
-                used_native = not hasattr(llm, "base_url") or "aicredits" not in str(getattr(llm, "base_url", ""))
-                
-                response = llm.invoke(input=state["messages"])
-                return {"messages": [response]}
-            except Exception as e:
-                err_str = str(e)
-                if any(x in err_str for x in ["429", "503", "401", "403", "insufficient_quota"]):
-                    print("LLM API key exhausted, marking 60s cooldown...")
-                    # Assume we exhausted the one we just tried to get
-                    # But get_llm handles the fallback. We just mark the currently active one
-                    used_native = True if "openai.com" in err_str else False 
-                    # Actually get_llm might have returned native, and it failed.
-                    mark_key_exhausted(is_native=used_native, cooldown_secs=60)
-                    last_err = e
-                    continue
-                raise e
-        raise RuntimeError(f"All LLM keys exhausted. Last error: {last_err}")
+        model_name = MODEL_TIERS.get(tier, "gemini-3.5-flash")
+
+        import os
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        api_key = os.environ.get("GOOGLE_API_KEY", "")
+        if hasattr(st, "secrets") and "GOOGLE_API_KEY" in st.secrets:
+            api_key = st.secrets["GOOGLE_API_KEY"]
+
+        llm = ChatGoogleGenerativeAI(
+            model=model_name,
+            google_api_key=api_key,
+            temperature=0.3,
+        ).bind_tools(tools)
+        response = llm.invoke(state["messages"])
+        return {"messages": [response]}
 
     builder = StateGraph(AgentState)
 
