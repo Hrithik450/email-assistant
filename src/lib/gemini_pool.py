@@ -6,7 +6,15 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 _cooldowns = {}
 
 def get_gemini_key(service: str = "embedding") -> str:
-    """Returns a Gemini API key. Could be expanded later to support a pool of Gemini keys."""
+    """Returns a Gemini API key from environment variables or Streamlit secrets."""
+    import sys
+    if "streamlit" in sys.modules:
+        try:
+            import streamlit as st
+            if hasattr(st, "secrets") and "GOOGLE_API_KEY" in st.secrets:
+                return st.secrets["GOOGLE_API_KEY"]
+        except Exception:
+            pass
     return os.environ.get("GOOGLE_API_KEY", "")
 
 def mark_key_exhausted(key: str, cooldown_secs: int = 60):

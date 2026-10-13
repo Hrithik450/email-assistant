@@ -1,5 +1,3 @@
-from webbrowser import get
-
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from src.lib.utils import EMBEDDING_DIM, EMBEDDING_MODEL_NAME
 from src.lib.gemini_pool import get_gemini_key

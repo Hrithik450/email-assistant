@@ -2,7 +2,6 @@ from src.lib.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class CacheService:
     """In-memory cache fallback (Redis removed)."""
     _cache: dict = {}
