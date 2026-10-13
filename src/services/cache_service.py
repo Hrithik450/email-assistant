@@ -1,30 +1,21 @@
 from src.lib.logger import get_logger
 
 logger = get_logger(__name__)
-from src.lib.cache import redis_client
 
 
 class CacheService:
+    """In-memory cache fallback (Redis removed)."""
+    _cache: dict = {}
+
     @staticmethod
     def delete(key: str):
-        try:
-            return redis_client.delete(key)
-        except Exception as e:
-            logger.warning("Redis delete failed for key=%s: %s", key, e)
-            return 0
+        return 1 if CacheService._cache.pop(key, None) is not None else 0
 
     @staticmethod
     def get(key: str):
-        try:
-            return redis_client.get(key)
-        except Exception as e:
-            logger.warning("Redis get failed for key=%s: %s", key, e)
-            return None
+        return CacheService._cache.get(key)
 
     @staticmethod
     def set(key: str, value, ex=None):
-        try:
-            return redis_client.set(key, value, ex=ex)
-        except Exception as e:
-            logger.warning("Redis set failed for key=%s: %s", key, e)
-            return False
+        CacheService._cache[key] = value
+        return True
