@@ -66,13 +66,18 @@ def route_model(state: AgentState) -> AgentState:
     return {"model_tier": tier}
 
 
-from src.lib.openai_pool import invoke_with_pooling
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 def call_model(state: AgentState):
     tier = state.get("model_tier", "standard")
-    model_name = MODEL_TIERS.get(tier, MODEL_TIERS["standard"])
-
-    response = invoke_with_pooling(model_name, state["messages"], tools)
+    model_name = MODEL_TIERS.get(tier, "gemini-3.5-flash")
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    llm = ChatGoogleGenerativeAI(
+        model=model_name,
+        google_api_key=api_key,
+        temperature=0.3,
+    ).bind_tools(tools)
+    response = llm.invoke(state["messages"])
     return {"messages": [response]}
 
 

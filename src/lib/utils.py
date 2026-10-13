@@ -8,11 +8,9 @@ import json
 import time
 import re
 
-# Gemini embeddings — single source of truth for model + vector size.
-# gemini-embedding-001 outputs 3072-d vectors, already normalized at full size,
-# so cosine distance can be used directly for retrieval.
 EMBEDDING_MODEL_NAME = "models/gemini-embedding-001"
 EMBEDDING_DIM = 3072
+CHROMA_COLLECTION_NAME = "organization_data"
 
 _ID_TAG_RE = re.compile(r"\s*<(id|tid)>.*?</\1>", re.IGNORECASE | re.DOTALL)
 _SOURCES_SPLIT_RE = re.compile(r"(?im)^[ \t>*-]*sources\s*:?[ \t]*$|\bsources\s*:")

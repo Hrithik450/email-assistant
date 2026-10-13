@@ -3,11 +3,10 @@ import numpy as np
 from langchain.tools import tool
 from sentence_transformers import CrossEncoder
 
-from src.lib.db import get_pool
-from src.lib.gemini_pool import get_gemini_key, mark_key_exhausted
-from src.lib.embeddings import get_embeddings
 from src.lib.logger import get_logger, log_tool_call
-from src.lib.utils import EMBEDDING_DIM
+from src.lib.pipeline import get_chroma_collection
+from src.lib.gemini_pool import embed_with_pooling
+from src.lib.utils import CHROMA_COLLECTION_NAME
 
 logger = get_logger(__name__)
 
@@ -21,55 +20,14 @@ def _get_cross_encoder() -> CrossEncoder:
     return _cross_encoder
 
 
-def _to_vector_literal(embedding: list[float]) -> str:
-    return "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
-
-
-def _fts_search(query: str, n_results: int = 50) -> list[tuple[str, str | None, float]]:
-    sql = """
-        SELECT content, gmail_email_id, ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', %s)) AS base_score
-        FROM email_embedding
-        WHERE to_tsvector('english', content) @@ websearch_to_tsquery('english', %s)
-        ORDER BY ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', %s)) + (CASE WHEN content LIKE '%%[ORGANIZATION BRIEFING DOCUMENT - HIGH PRIORITY]%%' THEN 1000 ELSE 0 END) DESC
-        LIMIT %s
-    """
-    results = []
-    with get_pool().connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, (query, query, query, n_results))
-            results = [
-                (content, eid, float(score)) for content, eid, score in cur.fetchall()
-            ]
-    return results
-
-
-def _vector_search(
-    query_embedding: list[float], n_results: int = 50
-) -> list[tuple[str, str | None, float]]:
-    sql = f"""
-        SELECT content, gmail_email_id,
-               1 - (embedding::halfvec({EMBEDDING_DIM}) <=> %s::halfvec({EMBEDDING_DIM})) AS sim
-        FROM email_embedding
-        ORDER BY embedding::halfvec({EMBEDDING_DIM}) <=> %s::halfvec({EMBEDDING_DIM})
-        LIMIT %s
-    """
-    results = []
-    with get_pool().connection() as conn:
-        with conn.cursor() as cur:
-            literal = _to_vector_literal(query_embedding)
-            cur.execute(sql, (literal, literal, n_results))
-            results = [
-                (content, eid, float(sim)) for content, eid, sim in cur.fetchall()
-            ]
-    return results
-
-
 def _fetch_email_sources(email_ids: list[str]) -> dict[str, dict]:
+    """Fetch sender / subject / date for gmail email ids from Postgres if available."""
     ids = [e for e in dict.fromkeys(email_ids) if e]
     if not ids:
         return {}
 
     try:
+        from src.lib.db import get_pool
         with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -86,7 +44,7 @@ def _fetch_email_sources(email_ids: list[str]) -> dict[str, dict]:
                 )
                 rows = cur.fetchall()
     except Exception as exc:
-        logger.warning("Source enrichment failed: %s", exc)
+        logger.debug("Source enrichment skipped/failed: %s", exc)
         return {}
 
     result: dict[str, dict] = {}
@@ -101,79 +59,66 @@ def _fetch_email_sources(email_ids: list[str]) -> dict[str, dict]:
 
 @tool("semantic_search_tool", parse_docstring=True)
 def semantic_search_tool(query: str) -> str:
-    """Performs optimized Hybrid Search (FTS + Vector) with Cross-Encoding re-ranking.
+    """Performs semantic search over the Chroma vector database with Cross-Encoder re-ranking.
 
     Args:
         query: The natural language query.
     """
     log_tool_call("semantic_search_tool", query)
 
-    # 1. Embed query (fast API call, no query expansion LLM latency)
+    # 1. Access ChromaDB collection
+    collection = get_chroma_collection(CHROMA_COLLECTION_NAME)
+    if collection is None:
+        return "Error: ChromaDB vector store is currently unavailable."
+
+    # 2. Generate 3072-dimension query embedding using Gemini
     try:
-        from src.lib.openai_pool import openai_embed_with_pooling
-        query_embedding = openai_embed_with_pooling(query)
+        query_embedding = embed_with_pooling(query, task_type="RETRIEVAL_QUERY")
     except Exception as exc:
-        logger.warning("All keys exhausted for embeddings. Last error: %s", exc)
-        return "Error: Vector embeddings are currently unavailable due to rate limits."
+        logger.warning("Gemini embedding failed: %s", exc)
+        return "Error: Could not generate vector embeddings for query."
 
-    # 2. Run searches in parallel or sequentially (fast)
+    # 3. Query ChromaDB vector database
     try:
-        vector_results = _vector_search(query_embedding, n_results=150)
-    except Exception as exc:
-        logger.warning("pgvector query failed: %s", exc)
-        vector_results = []
-
-    try:
-        fts_results = _fts_search(query, n_results=150)
-    except Exception as exc:
-        logger.warning("FTS query failed: %s", exc)
-        fts_results = []
-
-    # 3. Combine scores
-    candidate_map = {}
-
-    for fts_doc, fts_eid, fts_score in fts_results:
-        # MASSIVE BOOST for high-priority documents to ensure they reach the CrossEncoder
-        boost = (
-            1000 if "[ORGANIZATION BRIEFING DOCUMENT - HIGH PRIORITY]" in fts_doc else 0
+        search_results = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=50,
         )
-        candidate_map[fts_doc] = {
-            "email_id": fts_eid,
-            "score": candidate_map.get(fts_doc, {}).get("score", 0) + fts_score + boost,
-        }
+    except Exception as exc:
+        logger.warning("ChromaDB query failed: %s", exc)
+        return f"Error querying ChromaDB: {exc}"
 
-    for v_doc, v_eid, v_sim in vector_results:
-        boost = (
-            1000 if "[ORGANIZATION BRIEFING DOCUMENT - HIGH PRIORITY]" in v_doc else 0
-        )
-        candidate_map[v_doc] = {
-            "email_id": v_eid,
-            "score": candidate_map.get(v_doc, {}).get("score", 0)
-            + (v_sim * 10)
-            + boost,
-        }
+    documents = search_results.get("documents", [[]])[0]
+    metadatas = search_results.get("metadatas", [[]])[0]
+    distances = search_results.get("distances", [[]])[0]
 
-    if not candidate_map:
+    if not documents:
         return "No relevant documents found."
 
-    # 4. Limit Cross-Encoder to top 100 to increase recall
-    top_candidates = sorted(
-        candidate_map.items(), key=lambda x: x[1]["score"], reverse=True
-    )[:100]
+    # 4. Prepare candidates for Cross-Encoder re-ranking
+    candidates = []
+    for doc, meta, dist in zip(documents, metadatas, distances):
+        eid = meta.get("email_id") if isinstance(meta, dict) else None
+        candidates.append((doc, eid, dist))
 
-    pairs = [[query, text] for text, _ in top_candidates]
-    cross_scores = _get_cross_encoder().predict(pairs)
+    # Re-rank top candidates using Cross-Encoder
+    top_candidates = candidates[:30]
+    pairs = [[query, doc] for doc, _, _ in top_candidates]
+    try:
+        cross_scores = _get_cross_encoder().predict(pairs)
+        ranked = sorted(
+            zip(cross_scores, top_candidates), key=lambda x: x[0], reverse=True
+        )[:20]
+    except Exception as exc:
+        logger.warning("Cross-encoder reranking failed, falling back to vector distance: %s", exc)
+        ranked = [(1.0 / (1.0 + dist), cand) for cand in top_candidates]
 
-    # Return top 20 highly relevant chunks to the LLM context
-    final_ranked = sorted(
-        zip(cross_scores, top_candidates), key=lambda x: x[0], reverse=True
-    )[:20]
+    email_ids = [cand[1] for _, cand in ranked if cand[1]]
+    sources = _fetch_email_sources(email_ids)
 
-    sources = _fetch_email_sources([info["email_id"] for _, (_, info) in final_ranked])
-
+    # 5. Format output
     output = []
-    for rel_score, (text, info) in final_ranked:
-        eid = info["email_id"]
+    for score, (text, eid, _) in ranked:
         src = sources.get(eid)
         if src:
             header = (
